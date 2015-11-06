@@ -11,7 +11,8 @@ extern crate y4m;
 See [API documentation](http://docs.piston.rs/resize/resize/) for overview of all available methods. See also [this example](examples/resize.rs) on how to resize input y4m into grayscale y4m of different resolution:
 
 ```bash
-ffmpeg -i in.mkv -f yuv4mpegpipe - | target/debug/examples/resize - 640x360 - | mpv -
+cargo build --release --example resize
+ffmpeg -i in.mkv -f yuv4mpegpipe - | target/release/examples/resize - 640x360 - | mpv -
 ```
 
 ## License
