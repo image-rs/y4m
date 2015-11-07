@@ -25,17 +25,22 @@ fn main() {
     let mut resizer = resize::new(w1, h1, w2, h2, Triangle);
     let mut dst = vec![0;w2*h2];
 
-    let mut outfh: Box<io::Write> = if args[3] == "-" {
+    let outfh: Box<io::Write> = if args[3] == "-" {
         Box::new(io::stdout())
     } else {
         Box::new(File::create(&args[3]).unwrap())
     };
+    let mut encoder = y4m::encode(w2, h2)
+        .with_colorspace(y4m::Colorspace::Cmono)
+        .write_header(outfh)
+        .unwrap();
 
     loop {
         match decoder.read_frame() {
             Ok(frame) => {
                 resizer.run(frame.get_y_plane(), &mut dst);
-                if outfh.write(&dst).is_err() { break }
+                let out_frame = y4m::Frame::new([&dst, &[], &[]], None);
+                if encoder.write_frame(&out_frame).is_err() { break }
             },
             _ => break,
         }

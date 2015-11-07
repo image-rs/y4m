@@ -3,6 +3,7 @@ use std::str;
 use std::fmt;
 use std::io;
 use std::io::Read;
+use std::io::Write;
 
 const MAX_PARAMS_SIZE: usize = 1024;
 const FILE_MAGICK: &'static [u8] = b"YUV4MPEG2 ";
@@ -76,12 +77,15 @@ fn parse_bytes(buf: &[u8]) -> Result<usize, Error> {
     Ok(try!(try!(str::from_utf8(buf)).parse()))
 }
 
-// TODO(Kagami): >8bit pixel formats:
-// yuv4mpeg can only handle yuv444p, yuv422p, yuv420p, yuv411p and gray8 pixel
-// formats. And using 'strict -1' also yuv444p9, yuv422p9, yuv420p9, yuv444p10,
-// yuv422p10, yuv420p10, yuv444p12, yuv422p12, yuv420p12, yuv444p14, yuv422p14,
-// yuv420p14, yuv444p16, yuv422p16, yuv420p16 and gray16 pixel formats,
-// (c) ffmpeg.
+/// **NOTE:** Only 8-bit formats are currently supported.
+///
+/// > yuv4mpeg can only handle yuv444p, yuv422p, yuv420p, yuv411p and gray8
+/// pixel formats. And using 'strict -1' also yuv444p9, yuv422p9, yuv420p9,
+/// yuv444p10, yuv422p10, yuv420p10, yuv444p12, yuv422p12, yuv420p12,
+/// yuv444p14, yuv422p14, yuv420p14, yuv444p16, yuv422p16, yuv420p16 and gray16
+/// pixel formats.
+///
+/// (c) ffmpeg.
 #[derive(Debug, Clone, Copy)]
 pub enum Colorspace {
     Cmono,
@@ -90,6 +94,8 @@ pub enum Colorspace {
     C444,
     C420jpeg,
     C420paldv,
+    /// Found in some files.
+    C420mpeg2,
 }
 
 pub struct Decoder<R: Read> {
@@ -102,6 +108,12 @@ pub struct Decoder<R: Read> {
     colorspace: Option<Colorspace>,
     y_len: usize,
     u_len: usize,
+}
+
+impl<R: Read> fmt::Debug for Decoder<R> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "y4m::Decoder<w={}, h={}>", self.width, self.height)
+    }
 }
 
 impl<R: Read> Decoder<R> {
@@ -131,6 +143,7 @@ impl<R: Read> Decoder<R> {
                         b"444" => Some(Colorspace::C444),
                         b"420jpeg" => Some(Colorspace::C420jpeg),
                         b"420paldv" => Some(Colorspace::C420paldv),
+                        b"420mpeg2" => Some(Colorspace::C420mpeg2),
                         _ => None,
                     };
                 },
@@ -166,6 +179,7 @@ impl<R: Read> Decoder<R> {
             Some(Colorspace::C444) => (pixels, pixels, pixels),
             Some(Colorspace::C420jpeg) => c420_sizes,
             Some(Colorspace::C420paldv) => c420_sizes,
+            Some(Colorspace::C420mpeg2) => c420_sizes,
             None => c420_sizes,
         }
     }
@@ -196,21 +210,19 @@ impl<R: Read> Decoder<R> {
         ], raw_params))
     }
 
+    #[inline]
     pub fn get_width(&self) -> usize { self.width }
+    #[inline]
     pub fn get_height(&self) -> usize { self.height }
     /// Return file colorspace.
     ///
     /// **NOTE:** normally all .y4m should have colorspace param, but there are
     /// files encoded without that tag and it's unclear what should we do in
     /// that case. Currently C420 is implied by default as per ffmpeg behavior.
+    #[inline]
     pub fn get_colorspace(&self) -> Option<Colorspace> { self.colorspace }
+    #[inline]
     pub fn get_raw_params(&self) -> &[u8] { &self.raw_params }
-}
-
-impl<R: Read> fmt::Debug for Decoder<R> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "y4m::Decoder<w={}, h={}>", self.width, self.height)
-    }
 }
 
 #[derive(Debug)]
@@ -221,17 +233,98 @@ pub struct Frame<'a> {
 
 impl<'a> Frame<'a> {
     /// Create a new frame with optional parameters.
+    /// No heap allocations are made.
     pub fn new(planes: [&'a [u8];3], raw_params: Option<Vec<u8>>) -> Frame<'a> {
         Frame {planes: planes, raw_params: raw_params}
     }
 
+    #[inline]
     pub fn get_y_plane(&self) -> &[u8] { self.planes[0] }
+    #[inline]
     pub fn get_u_plane(&self) -> &[u8] { self.planes[1] }
+    #[inline]
     pub fn get_v_plane(&self) -> &[u8] { self.planes[2] }
+    #[inline]
     pub fn get_raw_params(&self) -> Option<&[u8]> { self.raw_params.as_ref().map(|v| &v[..]) }
+}
+
+/// Encoder builder. Allows to set y4m file parameters using builder pattern.
+// TODO(Kagami): Accept all known tags and raw params.
+#[derive(Debug)]
+pub struct EncoderBuilder {
+    width: usize,
+    height: usize,
+    colorspace: Option<Colorspace>,
+}
+
+impl EncoderBuilder {
+    /// Create a new encoder builder.
+    pub fn new(width: usize, height: usize) -> EncoderBuilder {
+        EncoderBuilder {
+            width: width,
+            height: height,
+            colorspace: None,
+        }
+    }
+
+    /// Specify file colorspace.
+    pub fn with_colorspace(mut self, colorspace: Colorspace) -> Self {
+        self.colorspace = Some(colorspace);
+        self
+    }
+
+    /// Write header to the stream and create encoder instance.
+    pub fn write_header<W: Write>(self, mut w: W) -> Result<Encoder<W>, Error> {
+        // XXX(Kagami): Beware that FILE_MAGICK already contains space.
+        try!(w.write_all(FILE_MAGICK));
+        try!(write!(w, "W{} H{}", self.width, self.height));
+        match self.colorspace {
+            Some(csp) => try!(write!(w, " {:?}", csp)),
+            _ => {},
+        }
+        try!(w.write_all(&[TERMINATOR]));
+        Ok(Encoder {
+            writer: w,
+        })
+    }
+}
+
+pub struct Encoder<W: Write> {
+    writer: W,
+}
+
+impl<W: Write> fmt::Debug for Encoder<W> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "y4m::Encoder")
+    }
+}
+
+impl<W: Write> Encoder<W> {
+    /// Write next frame to the stream.
+    pub fn write_frame(&mut self, frame: &Frame) -> Result<(), Error> {
+        let mut w = &mut self.writer;
+        try!(w.write_all(FRAME_MAGICK));
+        match frame.get_raw_params() {
+            Some(params) => {
+                try!(w.write_all(&[SEPARATOR]));
+                try!(w.write_all(params));
+            },
+            _ => {},
+        }
+        try!(w.write_all(&[TERMINATOR]));
+        try!(w.write_all(frame.get_y_plane()));
+        try!(w.write_all(frame.get_u_plane()));
+        try!(w.write_all(frame.get_v_plane()));
+        Ok(())
+    }
 }
 
 /// Create a new decoder instance. Alias for `Decoder::new`.
 pub fn decode<R: Read>(reader: R) -> Result<Decoder<R>, Error> {
     Decoder::new(reader)
+}
+
+/// Create a new encoder builder. Alias for `EncoderBuilder::new`.
+pub fn encode(width: usize, height: usize) -> EncoderBuilder {
+    EncoderBuilder::new(width, height)
 }
