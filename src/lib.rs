@@ -10,6 +10,7 @@ const FRAME_MAGICK: &'static [u8] = b"FRAME";
 const TERMINATOR: u8 = 0x0A;
 const SEPARATOR: u8 = b' ';
 
+/// Both encoding and decoding errors.
 #[derive(Debug)]
 pub enum Error {
     /// End of the file. Technically not an error, but it's easier to process
@@ -24,12 +25,12 @@ impl From<io::Error> for Error {
     fn from(err: io::Error) -> Error { Error::IoError(err) }
 }
 
-impl From<str::Utf8Error> for Error {
-    fn from(_: str::Utf8Error) -> Error { Error::ParseError }
-}
-
 impl From<num::ParseIntError> for Error {
     fn from(_: num::ParseIntError) -> Error { Error::ParseError }
+}
+
+impl From<str::Utf8Error> for Error {
+    fn from(_: str::Utf8Error) -> Error { Error::ParseError }
 }
 
 trait EnhancedRead {
@@ -70,13 +71,18 @@ impl<R: Read> EnhancedRead for R {
     }
 }
 
+fn parse_bytes(buf: &[u8]) -> Result<usize, Error> {
+    // A bit kludgy but seems like there is no other way.
+    Ok(try!(try!(str::from_utf8(buf)).parse()))
+}
+
 // TODO(Kagami): >8bit pixel formats:
 // yuv4mpeg can only handle yuv444p, yuv422p, yuv420p, yuv411p and gray8 pixel
 // formats. And using 'strict -1' also yuv444p9, yuv422p9, yuv420p9, yuv444p10,
 // yuv422p10, yuv420p10, yuv444p12, yuv422p12, yuv420p12, yuv444p14, yuv422p14,
 // yuv420p14, yuv444p16, yuv422p16, yuv420p16 and gray16 pixel formats,
 // (c) ffmpeg.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Colorspace {
     Cmono,
     C420,
@@ -115,8 +121,8 @@ impl<R: Read> Decoder<R> {
             let (name, value) = (param[0], &param[1..]);
             // TODO(Kagami): frame rate, interlacing, pixel aspect, comment.
             match name {
-                b'W' => { width = try!(Self::bytes2int(value)) },
-                b'H' => { height = try!(Self::bytes2int(value)) },
+                b'W' => { width = try!(parse_bytes(value)) },
+                b'H' => { height = try!(parse_bytes(value)) },
                 b'C' => {
                     csp = match value {
                         b"mono" => Some(Colorspace::Cmono),
@@ -148,11 +154,6 @@ impl<R: Read> Decoder<R> {
         })
     }
 
-    fn bytes2int(data: &[u8]) -> Result<usize, Error> {
-        // A bit kludgy but seems like there is no other way.
-        Ok(try!(try!(str::from_utf8(data)).parse()))
-    }
-
     fn get_plane_sizes(
         width: usize, height: usize, colorspace: &Option<Colorspace>,
     ) -> (usize, usize, usize) {
@@ -171,7 +172,7 @@ impl<R: Read> Decoder<R> {
 
     /// Iterate over frames, without extra heap allocations. End of input is
     /// indicated by `Error::EOF`.
-    pub fn next_frame<'a>(&'a mut self) -> Result<Frame<'a>, Error> {
+    pub fn read_frame<'a>(&'a mut self) -> Result<Frame<'a>, Error> {
         let end_params_pos = try!(self.reader.read_until(TERMINATOR, &mut self.params_buf));
         if end_params_pos < FRAME_MAGICK.len() || !self.params_buf.starts_with(FRAME_MAGICK) {
             return Err(Error::ParseError);
@@ -188,14 +189,11 @@ impl<R: Read> Decoder<R> {
             None
         };
         try!(self.reader.read_exact(&mut self.frame_buf));
-        Ok(Frame {
-            planes: [
-                &self.frame_buf[0..self.y_len],
-                &self.frame_buf[self.y_len..self.y_len+self.u_len],
-                &self.frame_buf[self.y_len+self.u_len..],
-            ],
-            raw_params: raw_params,
-        })
+        Ok(Frame::new([
+            &self.frame_buf[0..self.y_len],
+            &self.frame_buf[self.y_len..self.y_len+self.u_len],
+            &self.frame_buf[self.y_len+self.u_len..],
+        ], raw_params))
     }
 
     pub fn get_width(&self) -> usize { self.width }
@@ -205,7 +203,7 @@ impl<R: Read> Decoder<R> {
     /// **NOTE:** normally all .y4m should have colorspace param, but there are
     /// files encoded without that tag and it's unclear what should we do in
     /// that case. Currently C420 is implied by default as per ffmpeg behavior.
-    pub fn get_colorspace(&self) -> &Option<Colorspace> { &self.colorspace }
+    pub fn get_colorspace(&self) -> Option<Colorspace> { self.colorspace }
     pub fn get_raw_params(&self) -> &[u8] { &self.raw_params }
 }
 
@@ -222,6 +220,11 @@ pub struct Frame<'a> {
 }
 
 impl<'a> Frame<'a> {
+    /// Create a new frame with optional parameters.
+    pub fn new(planes: [&'a [u8];3], raw_params: Option<Vec<u8>>) -> Frame<'a> {
+        Frame {planes: planes, raw_params: raw_params}
+    }
+
     pub fn get_y_plane(&self) -> &[u8] { self.planes[0] }
     pub fn get_u_plane(&self) -> &[u8] { self.planes[1] }
     pub fn get_v_plane(&self) -> &[u8] { self.planes[2] }

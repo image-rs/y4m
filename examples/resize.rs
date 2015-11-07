@@ -32,7 +32,7 @@ fn main() {
     };
 
     loop {
-        match decoder.next_frame() {
+        match decoder.read_frame() {
             Ok(frame) => {
                 resizer.run(frame.get_y_plane(), &mut dst);
                 if outfh.write(&dst).is_err() { break }
