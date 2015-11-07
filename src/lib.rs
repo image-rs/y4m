@@ -49,7 +49,7 @@ impl From<str::Utf8Error> for Error {
 trait EnhancedRead {
     fn read_until(&mut self, ch: u8, buf: &mut [u8]) -> Result<usize, Error>;
     // While Read::read_exact is unstable.
-    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error>;
+    fn read_all(&mut self, buf: &mut [u8]) -> Result<(), Error>;
 }
 
 impl<R: Read> EnhancedRead for R {
@@ -71,7 +71,7 @@ impl<R: Read> EnhancedRead for R {
         parse_error!()
     }
 
-    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+    fn read_all(&mut self, buf: &mut [u8]) -> Result<(), Error> {
         let mut collected = 0;
         while collected < buf.len() {
             let chunk_size = try!(self.read(&mut buf[collected..]));
@@ -250,7 +250,7 @@ impl<'d, R: Read> Decoder<'d, R> {
         } else {
             None
         };
-        try!(self.reader.read_exact(&mut self.frame_buf));
+        try!(self.reader.read_all(&mut self.frame_buf));
         Ok(Frame::new([
             &self.frame_buf[0..self.y_len],
             &self.frame_buf[self.y_len..self.y_len+self.u_len],
