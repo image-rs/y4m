@@ -4,8 +4,25 @@ YUV4MPEG2 (.y4m) Encoder/Decoder. [Format specification](http://wiki.multimedia.
 
 ## Usage
 
+Simple stream copying:
+
 ```rust
 extern crate y4m;
+use std::io;
+
+let mut infh = io::stdin();
+let mut outfh = io::stdout();
+let mut dec = y4m::decode(&mut infh).unwrap();
+let mut enc = y4m::encode(dec.get_width(), dec.get_height(), dec.get_framerate())
+    .with_colorspace(dec.get_colorspace().unwrap_or(y4m::Colorspace::C420))
+    .write_header(&mut outfh)
+    .unwrap();
+loop {
+    match dec.read_frame() {
+        Ok(frame) => if enc.write_frame(&frame).is_err() { break },
+        _ => break,
+    }
+}
 ```
 
 See [API documentation](http://docs.piston.rs/y4m/y4m/) for overview of all available methods. See also [this example](examples/resize.rs) on how to resize input y4m into grayscale y4m of different resolution:

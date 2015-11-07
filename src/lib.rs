@@ -1,3 +1,6 @@
+//! # YUV4MPEG2 (.y4m) Encoder/Decoder
+#![deny(missing_docs)]
+
 use std::num;
 use std::str;
 use std::fmt;
@@ -46,7 +49,7 @@ impl From<str::Utf8Error> for Error {
 trait EnhancedRead {
     fn read_until(&mut self, ch: u8, buf: &mut [u8]) -> Result<usize, Error>;
     // While Read::read_exact is unstable.
-    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error>;
+    fn read_all(&mut self, buf: &mut [u8]) -> Result<(), Error>;
 }
 
 impl<R: Read> EnhancedRead for R {
@@ -68,7 +71,7 @@ impl<R: Read> EnhancedRead for R {
         parse_error!()
     }
 
-    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+    fn read_all(&mut self, buf: &mut [u8]) -> Result<(), Error> {
         let mut collected = 0;
         while collected < buf.len() {
             let chunk_size = try!(self.read(&mut buf[collected..]));
@@ -86,14 +89,17 @@ fn parse_bytes(buf: &[u8]) -> Result<usize, Error> {
     Ok(try!(try!(str::from_utf8(buf)).parse()))
 }
 
-/// Simple Ratio structure since it's not available in stdlib.
+/// Simple ratio structure since stdlib lacks one.
 #[derive(Debug, Clone, Copy)]
 pub struct Ratio {
+    /// Numerator.
     pub num: usize,
+    /// Denominator.
     pub den: usize,
 }
 
 impl Ratio {
+    /// Create a new ratio.
     pub fn new(num: usize, den: usize) -> Ratio {
         Ratio {num: num, den: den}
     }
@@ -105,7 +111,7 @@ impl fmt::Display for Ratio {
     }
 }
 
-/// **NOTE:** Only 8-bit formats are currently supported.
+/// Colour space. **NOTE:** Only 8-bit formats are currently supported.
 ///
 /// > yuv4mpeg can only handle yuv444p, yuv422p, yuv420p, yuv411p and gray8
 /// pixel formats. And using 'strict -1' also yuv444p9, yuv422p9, yuv420p9,
@@ -116,14 +122,20 @@ impl fmt::Display for Ratio {
 /// (c) ffmpeg.
 #[derive(Debug, Clone, Copy)]
 pub enum Colorspace {
+    /// Grayscale only, 8-bit.
     Cmono,
+    /// 4:2:0 with coincident chroma planes, 8-bit.
     C420,
-    C422,
-    C444,
+    /// 4:2:0 with biaxially-displaced chroma planes, 8-bit.
     C420jpeg,
+    /// 4:2:0 with vertically-displaced chroma planes, 8-bit.
     C420paldv,
-    /// Found in some files.
+    /// Found in some files. Same as `C420`.
     C420mpeg2,
+    /// 4:2:2, 8-bit.
+    C422,
+    /// 4:4:4, 8-bit.
+    C444,
 }
 
 fn get_plane_sizes(
@@ -143,6 +155,7 @@ fn get_plane_sizes(
     }
 }
 
+/// YUV4MPEG2 decoder.
 pub struct Decoder<'d, R: Read + 'd> {
     reader: &'d mut R,
     params_buf: Vec<u8>,
@@ -156,13 +169,8 @@ pub struct Decoder<'d, R: Read + 'd> {
     u_len: usize,
 }
 
-impl<'d, R: Read> fmt::Debug for Decoder<'d, R> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "y4m::Decoder<w={}, h={}>", self.width, self.height)
-    }
-}
-
 impl<'d, R: Read> Decoder<'d, R> {
+    /// Create a new decoder instance.
     pub fn new(reader: &mut R) -> Result<Decoder<R>, Error> {
         let mut params_buf = vec![0;MAX_PARAMS_SIZE];
         let end_params_pos = try!(reader.read_until(TERMINATOR, &mut params_buf));
@@ -242,7 +250,7 @@ impl<'d, R: Read> Decoder<'d, R> {
         } else {
             None
         };
-        try!(self.reader.read_exact(&mut self.frame_buf));
+        try!(self.reader.read_all(&mut self.frame_buf));
         Ok(Frame::new([
             &self.frame_buf[0..self.y_len],
             &self.frame_buf[self.y_len..self.y_len+self.u_len],
@@ -250,10 +258,13 @@ impl<'d, R: Read> Decoder<'d, R> {
         ], raw_params))
     }
 
+    /// Return file width.
     #[inline]
     pub fn get_width(&self) -> usize { self.width }
+    /// Return file height.
     #[inline]
     pub fn get_height(&self) -> usize { self.height }
+    /// Return file framerate.
     #[inline]
     pub fn get_framerate(&self) -> Ratio { self.framerate }
     /// Return file colorspace.
@@ -263,10 +274,12 @@ impl<'d, R: Read> Decoder<'d, R> {
     /// that case. Currently C420 is implied by default as per ffmpeg behavior.
     #[inline]
     pub fn get_colorspace(&self) -> Option<Colorspace> { self.colorspace }
+    /// Return file raw parameters.
     #[inline]
     pub fn get_raw_params(&self) -> &[u8] { &self.raw_params }
 }
 
+/// A single frame.
 #[derive(Debug)]
 pub struct Frame<'f> {
     planes: [&'f [u8];3],
@@ -280,12 +293,16 @@ impl<'f> Frame<'f> {
         Frame {planes: planes, raw_params: raw_params}
     }
 
+    /// Return Y (first) plane.
     #[inline]
     pub fn get_y_plane(&self) -> &[u8] { self.planes[0] }
+    /// Return U (second) plane. Empty in case of grayscale.
     #[inline]
     pub fn get_u_plane(&self) -> &[u8] { self.planes[1] }
+    /// Return V (third) plane. Empty in case of grayscale.
     #[inline]
     pub fn get_v_plane(&self) -> &[u8] { self.planes[2] }
+    /// Return frame raw parameters if any.
     #[inline]
     pub fn get_raw_params(&self) -> Option<&[u8]> { self.raw_params.as_ref().map(|v| &v[..]) }
 }
@@ -330,8 +347,6 @@ impl EncoderBuilder {
         let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
         Ok(Encoder {
             writer: writer,
-            width: self.width,
-            height: self.height,
             y_len: y_len,
             u_len: u_len,
             v_len: v_len,
@@ -339,19 +354,12 @@ impl EncoderBuilder {
     }
 }
 
+/// YUV4MPEG2 encoder.
 pub struct Encoder<'e, W: Write + 'e> {
     writer: &'e mut W,
-    width: usize,
-    height: usize,
     y_len: usize,
     u_len: usize,
     v_len: usize,
-}
-
-impl<'e, W: Write> fmt::Debug for Encoder<'e, W> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "y4m::Encoder<w={}, h={}>", self.width, self.height)
-    }
 }
 
 impl<'e, W: Write> Encoder<'e, W> {
