@@ -17,8 +17,12 @@ pub enum Error {
     /// End of the file. Technically not an error, but it's easier to process
     /// that way.
     EOF,
+    /// Bad input parameters provided.
+    BadInput,
+    /// Error while parsing the file/frame header.
     // TODO(Kagami): Better granularity of parse errors.
     ParseError,
+    /// Error while reading/writing the file.
     IoError(io::Error),
 }
 
@@ -77,6 +81,19 @@ fn parse_bytes(buf: &[u8]) -> Result<usize, Error> {
     Ok(try!(try!(str::from_utf8(buf)).parse()))
 }
 
+/// Simple Ratio structure since it's not available in stdlib.
+#[derive(Debug, Clone, Copy)]
+pub struct Ratio {
+    num: usize,
+    den: usize,
+}
+
+impl Ratio {
+    pub fn new(num: usize, den: usize) -> Ratio {
+        Ratio {num: num, den: den}
+    }
+}
+
 /// **NOTE:** Only 8-bit formats are currently supported.
 ///
 /// > yuv4mpeg can only handle yuv444p, yuv422p, yuv420p, yuv411p and gray8
@@ -98,6 +115,23 @@ pub enum Colorspace {
     C420mpeg2,
 }
 
+fn get_plane_sizes(
+    width: usize, height: usize, colorspace: Option<Colorspace>,
+) -> (usize, usize, usize) {
+    let pixels = width * height;
+    let c420_sizes = (pixels, pixels/4, pixels/4);
+    match colorspace {
+        Some(Colorspace::Cmono) => (pixels, 0, 0),
+        Some(Colorspace::C420) => c420_sizes,
+        Some(Colorspace::C422) => (pixels, pixels/2, pixels/2),
+        Some(Colorspace::C444) => (pixels, pixels, pixels),
+        Some(Colorspace::C420jpeg) => c420_sizes,
+        Some(Colorspace::C420paldv) => c420_sizes,
+        Some(Colorspace::C420mpeg2) => c420_sizes,
+        None => c420_sizes,
+    }
+}
+
 pub struct Decoder<'d, R: Read + 'd> {
     reader: &'d mut R,
     params_buf: Vec<u8>,
@@ -105,6 +139,7 @@ pub struct Decoder<'d, R: Read + 'd> {
     raw_params: Vec<u8>,
     width: usize,
     height: usize,
+    framerate: Ratio,
     colorspace: Option<Colorspace>,
     y_len: usize,
     u_len: usize,
@@ -126,6 +161,7 @@ impl<'d, R: Read> Decoder<'d, R> {
         let raw_params = (&params_buf[FILE_MAGICK.len()..end_params_pos]).to_owned();
         let mut width = 0;
         let mut height = 0;
+        let mut fps = Ratio::new(0, 0);
         let mut csp = None;
         // We shouldn't convert it to string because encoding is unspecified.
         for param in raw_params.split(|&b| b == SEPARATOR) {
@@ -135,6 +171,9 @@ impl<'d, R: Read> Decoder<'d, R> {
             match name {
                 b'W' => { width = try!(parse_bytes(value)) },
                 b'H' => { height = try!(parse_bytes(value)) },
+                b'F' => {
+
+                },
                 b'C' => {
                     csp = match value {
                         b"mono" => Some(Colorspace::Cmono),
@@ -151,7 +190,7 @@ impl<'d, R: Read> Decoder<'d, R> {
             }
         }
         if width == 0 || height == 0 { return Err(Error::ParseError) }
-        let (y_len, u_len, v_len) = Self::get_plane_sizes(width, height, &csp);
+        let (y_len, u_len, v_len) = get_plane_sizes(width, height, csp);
         let frame_size = y_len + u_len + v_len;
         let frame_buf = vec![0;frame_size];
         Ok(Decoder {
@@ -161,27 +200,11 @@ impl<'d, R: Read> Decoder<'d, R> {
             raw_params: raw_params,
             width: width,
             height: height,
+            framerate: fps,
             colorspace: csp,
             y_len: y_len,
             u_len: u_len,
         })
-    }
-
-    fn get_plane_sizes(
-        width: usize, height: usize, colorspace: &Option<Colorspace>,
-    ) -> (usize, usize, usize) {
-        let pixels = width * height;
-        let c420_sizes = (pixels, pixels/4, pixels/4);
-        match *colorspace {
-            Some(Colorspace::Cmono) => (pixels, 0, 0),
-            Some(Colorspace::C420) => c420_sizes,
-            Some(Colorspace::C422) => (pixels, pixels/2, pixels/2),
-            Some(Colorspace::C444) => (pixels, pixels, pixels),
-            Some(Colorspace::C420jpeg) => c420_sizes,
-            Some(Colorspace::C420paldv) => c420_sizes,
-            Some(Colorspace::C420mpeg2) => c420_sizes,
-            None => c420_sizes,
-        }
     }
 
     /// Iterate over frames, without extra heap allocations. End of input is
@@ -214,6 +237,8 @@ impl<'d, R: Read> Decoder<'d, R> {
     pub fn get_width(&self) -> usize { self.width }
     #[inline]
     pub fn get_height(&self) -> usize { self.height }
+    #[inline]
+    pub fn get_framerate(&self) -> Ratio { self.framerate }
     /// Return file colorspace.
     ///
     /// **NOTE:** normally all .y4m should have colorspace param, but there are
@@ -283,14 +308,21 @@ impl EncoderBuilder {
             _ => {},
         }
         try!(writer.write_all(&[TERMINATOR]));
+        let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
         Ok(Encoder {
             writer: writer,
+            y_len: y_len,
+            u_len: u_len,
+            v_len: v_len,
         })
     }
 }
 
 pub struct Encoder<'e, W: Write + 'e> {
     writer: &'e mut W,
+    y_len: usize,
+    u_len: usize,
+    v_len: usize,
 }
 
 impl<'e, W: Write> fmt::Debug for Encoder<'e, W> {
@@ -302,6 +334,11 @@ impl<'e, W: Write> fmt::Debug for Encoder<'e, W> {
 impl<'e, W: Write> Encoder<'e, W> {
     /// Write next frame to the stream.
     pub fn write_frame(&mut self, frame: &Frame) -> Result<(), Error> {
+        if frame.get_y_plane().len() != self.y_len
+            ||  frame.get_u_plane().len() != self.u_len
+            ||  frame.get_v_plane().len() != self.v_len {
+            return Err(Error::BadInput);
+        }
         try!(self.writer.write_all(FRAME_MAGICK));
         match frame.get_raw_params() {
             Some(params) => {
