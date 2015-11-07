@@ -30,7 +30,7 @@ fn main() {
     } else {
         Box::new(File::create(&args[3]).unwrap())
     };
-    let mut encoder = y4m::encode(w2, h2)
+    let mut encoder = y4m::encode(w2, h2, decoder.get_framerate())
         .with_colorspace(y4m::Colorspace::Cmono)
         .write_header(&mut outfh)
         .unwrap();

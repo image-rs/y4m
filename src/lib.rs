@@ -9,7 +9,8 @@ const MAX_PARAMS_SIZE: usize = 1024;
 const FILE_MAGICK: &'static [u8] = b"YUV4MPEG2 ";
 const FRAME_MAGICK: &'static [u8] = b"FRAME";
 const TERMINATOR: u8 = 0x0A;
-const SEPARATOR: u8 = b' ';
+const FIELD_SEP: u8 = b' ';
+const RATIO_SEP: u8 = b':';
 
 /// Both encoding and decoding errors.
 #[derive(Debug)]
@@ -24,6 +25,10 @@ pub enum Error {
     ParseError,
     /// Error while reading/writing the file.
     IoError(io::Error),
+}
+
+macro_rules! parse_error {
+    () => (return Err(Error::ParseError));
 }
 
 impl From<io::Error> for Error {
@@ -60,7 +65,7 @@ impl<R: Read> EnhancedRead for R {
             }
             collected += chunk_size;
         }
-        Err(Error::ParseError)
+        parse_error!()
     }
 
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
@@ -84,13 +89,19 @@ fn parse_bytes(buf: &[u8]) -> Result<usize, Error> {
 /// Simple Ratio structure since it's not available in stdlib.
 #[derive(Debug, Clone, Copy)]
 pub struct Ratio {
-    num: usize,
-    den: usize,
+    pub num: usize,
+    pub den: usize,
 }
 
 impl Ratio {
     pub fn new(num: usize, den: usize) -> Ratio {
         Ratio {num: num, den: den}
+    }
+}
+
+impl fmt::Display for Ratio {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.num, self.den)
     }
 }
 
@@ -156,23 +167,29 @@ impl<'d, R: Read> Decoder<'d, R> {
         let mut params_buf = vec![0;MAX_PARAMS_SIZE];
         let end_params_pos = try!(reader.read_until(TERMINATOR, &mut params_buf));
         if end_params_pos < FILE_MAGICK.len() || !params_buf.starts_with(FILE_MAGICK) {
-            return Err(Error::ParseError);
+            parse_error!()
         }
         let raw_params = (&params_buf[FILE_MAGICK.len()..end_params_pos]).to_owned();
         let mut width = 0;
         let mut height = 0;
-        let mut fps = Ratio::new(0, 0);
+        // Framerate is actually required per spec, but let's be a bit more
+        // permissive as per ffmpeg behavior.
+        let mut fps = Ratio::new(25, 1);
         let mut csp = None;
         // We shouldn't convert it to string because encoding is unspecified.
-        for param in raw_params.split(|&b| b == SEPARATOR) {
+        for param in raw_params.split(|&b| b == FIELD_SEP) {
             if param.len() < 1 { continue }
             let (name, value) = (param[0], &param[1..]);
-            // TODO(Kagami): frame rate, interlacing, pixel aspect, comment.
+            // TODO(Kagami): interlacing, pixel aspect, comment.
             match name {
                 b'W' => { width = try!(parse_bytes(value)) },
                 b'H' => { height = try!(parse_bytes(value)) },
                 b'F' => {
-
+                    let parts: Vec<_> = value.splitn(2, |&b| b == RATIO_SEP).collect();
+                    if parts.len() != 2 { parse_error!() }
+                    let num = try!(parse_bytes(parts[0]));
+                    let den = try!(parse_bytes(parts[1]));
+                    fps = Ratio::new(num, den);
                 },
                 b'C' => {
                     csp = match value {
@@ -189,7 +206,7 @@ impl<'d, R: Read> Decoder<'d, R> {
                 _ => {},
             }
         }
-        if width == 0 || height == 0 { return Err(Error::ParseError) }
+        if width == 0 || height == 0 { parse_error!() }
         let (y_len, u_len, v_len) = get_plane_sizes(width, height, csp);
         let frame_size = y_len + u_len + v_len;
         let frame_buf = vec![0;frame_size];
@@ -212,14 +229,14 @@ impl<'d, R: Read> Decoder<'d, R> {
     pub fn read_frame(&mut self) -> Result<Frame, Error> {
         let end_params_pos = try!(self.reader.read_until(TERMINATOR, &mut self.params_buf));
         if end_params_pos < FRAME_MAGICK.len() || !self.params_buf.starts_with(FRAME_MAGICK) {
-            return Err(Error::ParseError);
+            parse_error!()
         }
         // We don't parse frame params currently but user has access to them.
         let start_params_pos = FRAME_MAGICK.len();
         let raw_params = if end_params_pos - start_params_pos > 0 {
             // Check for extra space.
-            if self.params_buf[start_params_pos] != SEPARATOR {
-                return Err(Error::ParseError);
+            if self.params_buf[start_params_pos] != FIELD_SEP {
+                parse_error!()
             }
             Some((&self.params_buf[start_params_pos+1..end_params_pos]).to_owned())
         } else {
@@ -279,15 +296,17 @@ impl<'f> Frame<'f> {
 pub struct EncoderBuilder {
     width: usize,
     height: usize,
+    framerate: Ratio,
     colorspace: Option<Colorspace>,
 }
 
 impl EncoderBuilder {
     /// Create a new encoder builder.
-    pub fn new(width: usize, height: usize) -> EncoderBuilder {
+    pub fn new(width: usize, height: usize, framerate: Ratio) -> EncoderBuilder {
         EncoderBuilder {
             width: width,
             height: height,
+            framerate: framerate,
             colorspace: None,
         }
     }
@@ -302,7 +321,7 @@ impl EncoderBuilder {
     pub fn write_header<W: Write>(self, writer: &mut W) -> Result<Encoder<W>, Error> {
         // XXX(Kagami): Beware that FILE_MAGICK already contains space.
         try!(writer.write_all(FILE_MAGICK));
-        try!(write!(writer, "W{} H{}", self.width, self.height));
+        try!(write!(writer, "W{} H{} F{}", self.width, self.height, self.framerate));
         match self.colorspace {
             Some(csp) => try!(write!(writer, " {:?}", csp)),
             _ => {},
@@ -311,6 +330,8 @@ impl EncoderBuilder {
         let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
         Ok(Encoder {
             writer: writer,
+            width: self.width,
+            height: self.height,
             y_len: y_len,
             u_len: u_len,
             v_len: v_len,
@@ -320,6 +341,8 @@ impl EncoderBuilder {
 
 pub struct Encoder<'e, W: Write + 'e> {
     writer: &'e mut W,
+    width: usize,
+    height: usize,
     y_len: usize,
     u_len: usize,
     v_len: usize,
@@ -327,7 +350,7 @@ pub struct Encoder<'e, W: Write + 'e> {
 
 impl<'e, W: Write> fmt::Debug for Encoder<'e, W> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "y4m::Encoder")
+        write!(f, "y4m::Encoder<w={}, h={}>", self.width, self.height)
     }
 }
 
@@ -342,7 +365,7 @@ impl<'e, W: Write> Encoder<'e, W> {
         try!(self.writer.write_all(FRAME_MAGICK));
         match frame.get_raw_params() {
             Some(params) => {
-                try!(self.writer.write_all(&[SEPARATOR]));
+                try!(self.writer.write_all(&[FIELD_SEP]));
                 try!(self.writer.write_all(params));
             },
             _ => {},
@@ -361,6 +384,6 @@ pub fn decode<R: Read>(reader: &mut R) -> Result<Decoder<R>, Error> {
 }
 
 /// Create a new encoder builder. Alias for `EncoderBuilder::new`.
-pub fn encode(width: usize, height: usize) -> EncoderBuilder {
-    EncoderBuilder::new(width, height)
+pub fn encode(width: usize, height: usize, framerate: Ratio) -> EncoderBuilder {
+    EncoderBuilder::new(width, height, framerate)
 }
