@@ -36,7 +36,7 @@ impl From<str::Utf8Error> for Error {
 
 trait EnhancedRead {
     fn read_until(&mut self, ch: u8, buf: &mut [u8]) -> Result<usize, Error>;
-    // While io::Read::read_exact is unstable.
+    // While Read::read_exact is unstable.
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error>;
 }
 
@@ -98,8 +98,8 @@ pub enum Colorspace {
     C420mpeg2,
 }
 
-pub struct Decoder<R: Read> {
-    reader: R,
+pub struct Decoder<'d, R: Read + 'd> {
+    reader: &'d mut R,
     params_buf: Vec<u8>,
     frame_buf: Vec<u8>,
     raw_params: Vec<u8>,
@@ -110,14 +110,14 @@ pub struct Decoder<R: Read> {
     u_len: usize,
 }
 
-impl<R: Read> fmt::Debug for Decoder<R> {
+impl<'d, R: Read> fmt::Debug for Decoder<'d, R> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "y4m::Decoder<w={}, h={}>", self.width, self.height)
     }
 }
 
-impl<R: Read> Decoder<R> {
-    pub fn new(mut reader: R) -> Result<Decoder<R>, Error> {
+impl<'d, R: Read> Decoder<'d, R> {
+    pub fn new(reader: &mut R) -> Result<Decoder<R>, Error> {
         let mut params_buf = vec![0;MAX_PARAMS_SIZE];
         let end_params_pos = try!(reader.read_until(TERMINATOR, &mut params_buf));
         if end_params_pos < FILE_MAGICK.len() || !params_buf.starts_with(FILE_MAGICK) {
@@ -186,7 +186,7 @@ impl<R: Read> Decoder<R> {
 
     /// Iterate over frames, without extra heap allocations. End of input is
     /// indicated by `Error::EOF`.
-    pub fn read_frame<'a>(&'a mut self) -> Result<Frame<'a>, Error> {
+    pub fn read_frame(&mut self) -> Result<Frame, Error> {
         let end_params_pos = try!(self.reader.read_until(TERMINATOR, &mut self.params_buf));
         if end_params_pos < FRAME_MAGICK.len() || !self.params_buf.starts_with(FRAME_MAGICK) {
             return Err(Error::ParseError);
@@ -226,15 +226,15 @@ impl<R: Read> Decoder<R> {
 }
 
 #[derive(Debug)]
-pub struct Frame<'a> {
-    planes: [&'a [u8];3],
+pub struct Frame<'f> {
+    planes: [&'f [u8];3],
     raw_params: Option<Vec<u8>>,
 }
 
-impl<'a> Frame<'a> {
+impl<'f> Frame<'f> {
     /// Create a new frame with optional parameters.
     /// No heap allocations are made.
-    pub fn new(planes: [&'a [u8];3], raw_params: Option<Vec<u8>>) -> Frame<'a> {
+    pub fn new(planes: [&'f [u8];3], raw_params: Option<Vec<u8>>) -> Frame<'f> {
         Frame {planes: planes, raw_params: raw_params}
     }
 
@@ -274,53 +274,52 @@ impl EncoderBuilder {
     }
 
     /// Write header to the stream and create encoder instance.
-    pub fn write_header<W: Write>(self, mut w: W) -> Result<Encoder<W>, Error> {
+    pub fn write_header<W: Write>(self, writer: &mut W) -> Result<Encoder<W>, Error> {
         // XXX(Kagami): Beware that FILE_MAGICK already contains space.
-        try!(w.write_all(FILE_MAGICK));
-        try!(write!(w, "W{} H{}", self.width, self.height));
+        try!(writer.write_all(FILE_MAGICK));
+        try!(write!(writer, "W{} H{}", self.width, self.height));
         match self.colorspace {
-            Some(csp) => try!(write!(w, " {:?}", csp)),
+            Some(csp) => try!(write!(writer, " {:?}", csp)),
             _ => {},
         }
-        try!(w.write_all(&[TERMINATOR]));
+        try!(writer.write_all(&[TERMINATOR]));
         Ok(Encoder {
-            writer: w,
+            writer: writer,
         })
     }
 }
 
-pub struct Encoder<W: Write> {
-    writer: W,
+pub struct Encoder<'e, W: Write + 'e> {
+    writer: &'e mut W,
 }
 
-impl<W: Write> fmt::Debug for Encoder<W> {
+impl<'e, W: Write> fmt::Debug for Encoder<'e, W> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "y4m::Encoder")
     }
 }
 
-impl<W: Write> Encoder<W> {
+impl<'e, W: Write> Encoder<'e, W> {
     /// Write next frame to the stream.
     pub fn write_frame(&mut self, frame: &Frame) -> Result<(), Error> {
-        let mut w = &mut self.writer;
-        try!(w.write_all(FRAME_MAGICK));
+        try!(self.writer.write_all(FRAME_MAGICK));
         match frame.get_raw_params() {
             Some(params) => {
-                try!(w.write_all(&[SEPARATOR]));
-                try!(w.write_all(params));
+                try!(self.writer.write_all(&[SEPARATOR]));
+                try!(self.writer.write_all(params));
             },
             _ => {},
         }
-        try!(w.write_all(&[TERMINATOR]));
-        try!(w.write_all(frame.get_y_plane()));
-        try!(w.write_all(frame.get_u_plane()));
-        try!(w.write_all(frame.get_v_plane()));
+        try!(self.writer.write_all(&[TERMINATOR]));
+        try!(self.writer.write_all(frame.get_y_plane()));
+        try!(self.writer.write_all(frame.get_u_plane()));
+        try!(self.writer.write_all(frame.get_v_plane()));
         Ok(())
     }
 }
 
 /// Create a new decoder instance. Alias for `Decoder::new`.
-pub fn decode<R: Read>(reader: R) -> Result<Decoder<R>, Error> {
+pub fn decode<R: Read>(reader: &mut R) -> Result<Decoder<R>, Error> {
     Decoder::new(reader)
 }
 

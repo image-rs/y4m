@@ -12,12 +12,12 @@ fn main() {
         return println!("Usage: {} in.y4m WxH out.y4m", args[0]);
     }
 
-    let infh: Box<io::Read> = if args[1] == "-" {
+    let mut infh: Box<io::Read> = if args[1] == "-" {
         Box::new(io::stdin())
     } else {
         Box::new(File::open(&args[1]).unwrap())
     };
-    let mut decoder = y4m::decode(infh).unwrap();
+    let mut decoder = y4m::decode(&mut infh).unwrap();
 
     let (w1, h1) = (decoder.get_width(), decoder.get_height());
     let dst_dims: Vec<_> = args[2].split("x").map(|s| s.parse().unwrap()).collect();
@@ -25,14 +25,14 @@ fn main() {
     let mut resizer = resize::new(w1, h1, w2, h2, Triangle);
     let mut dst = vec![0;w2*h2];
 
-    let outfh: Box<io::Write> = if args[3] == "-" {
+    let mut outfh: Box<io::Write> = if args[3] == "-" {
         Box::new(io::stdout())
     } else {
         Box::new(File::create(&args[3]).unwrap())
     };
     let mut encoder = y4m::encode(w2, h2)
         .with_colorspace(y4m::Colorspace::Cmono)
-        .write_header(outfh)
+        .write_header(&mut outfh)
         .unwrap();
 
     loop {
