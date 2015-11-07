@@ -89,7 +89,9 @@ fn parse_bytes(buf: &[u8]) -> Result<usize, Error> {
 /// Simple Ratio structure since it's not available in stdlib.
 #[derive(Debug, Clone, Copy)]
 pub struct Ratio {
+    /// Numerator.
     pub num: usize,
+    /// Denominator.
     pub den: usize,
 }
 
@@ -154,12 +156,6 @@ pub struct Decoder<'d, R: Read + 'd> {
     colorspace: Option<Colorspace>,
     y_len: usize,
     u_len: usize,
-}
-
-impl<'d, R: Read> fmt::Debug for Decoder<'d, R> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "y4m::Decoder<w={}, h={}>", self.width, self.height)
-    }
 }
 
 impl<'d, R: Read> Decoder<'d, R> {
@@ -330,8 +326,6 @@ impl EncoderBuilder {
         let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
         Ok(Encoder {
             writer: writer,
-            width: self.width,
-            height: self.height,
             y_len: y_len,
             u_len: u_len,
             v_len: v_len,
@@ -341,17 +335,9 @@ impl EncoderBuilder {
 
 pub struct Encoder<'e, W: Write + 'e> {
     writer: &'e mut W,
-    width: usize,
-    height: usize,
     y_len: usize,
     u_len: usize,
     v_len: usize,
-}
-
-impl<'e, W: Write> fmt::Debug for Encoder<'e, W> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "y4m::Encoder<w={}, h={}>", self.width, self.height)
-    }
 }
 
 impl<'e, W: Write> Encoder<'e, W> {
