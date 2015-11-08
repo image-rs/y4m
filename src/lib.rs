@@ -111,7 +111,8 @@ impl fmt::Display for Ratio {
     }
 }
 
-/// Colour space. **NOTE:** Only 8-bit formats are currently supported.
+/// Colorspace. It's a color model in fact, but let's conform to the spec.
+/// **NOTE:** Only 8-bit formats are currently supported.
 ///
 /// > yuv4mpeg can only handle yuv444p, yuv422p, yuv420p, yuv411p and gray8
 /// pixel formats. And using 'strict -1' also yuv444p9, yuv422p9, yuv420p9,
