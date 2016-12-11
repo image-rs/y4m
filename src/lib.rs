@@ -24,7 +24,6 @@ pub enum Error {
     /// Bad input parameters provided.
     BadInput,
     /// Error while parsing the file/frame header.
-    // TODO(Kagami): Better granularity of parse errors.
     ParseError,
     /// Error while reading/writing the file.
     IoError(io::Error),
@@ -35,15 +34,21 @@ macro_rules! parse_error {
 }
 
 impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Error { Error::IoError(err) }
+    fn from(err: io::Error) -> Error {
+        Error::IoError(err)
+    }
 }
 
 impl From<num::ParseIntError> for Error {
-    fn from(_: num::ParseIntError) -> Error { Error::ParseError }
+    fn from(_: num::ParseIntError) -> Error {
+        Error::ParseError
+    }
 }
 
 impl From<str::Utf8Error> for Error {
-    fn from(_: str::Utf8Error) -> Error { Error::ParseError }
+    fn from(_: str::Utf8Error) -> Error {
+        Error::ParseError
+    }
 }
 
 trait EnhancedRead {
@@ -59,7 +64,7 @@ impl<R: Read> EnhancedRead for R {
     fn read_until(&mut self, ch: u8, buf: &mut [u8]) -> Result<usize, Error> {
         let mut collected = 0;
         while collected < buf.len() {
-            let chunk_size = try!(self.read(&mut buf[collected..collected+1]));
+            let chunk_size = try!(self.read(&mut buf[collected..collected + 1]));
             if chunk_size == 0 {
                 return Err(Error::EOF);
             }
@@ -101,7 +106,10 @@ pub struct Ratio {
 impl Ratio {
     /// Create a new ratio.
     pub fn new(num: usize, den: usize) -> Ratio {
-        Ratio {num: num, den: den}
+        Ratio {
+            num: num,
+            den: den,
+        }
     }
 }
 
@@ -139,15 +147,16 @@ pub enum Colorspace {
     C444,
 }
 
-fn get_plane_sizes(
-    width: usize, height: usize, colorspace: Option<Colorspace>,
-) -> (usize, usize, usize) {
+fn get_plane_sizes(width: usize,
+                   height: usize,
+                   colorspace: Option<Colorspace>)
+                   -> (usize, usize, usize) {
     let pixels = width * height;
-    let c420_sizes = (pixels, pixels/4, pixels/4);
+    let c420_sizes = (pixels, pixels / 4, pixels / 4);
     match colorspace {
         Some(Colorspace::Cmono) => (pixels, 0, 0),
         Some(Colorspace::C420) => c420_sizes,
-        Some(Colorspace::C422) => (pixels, pixels/2, pixels/2),
+        Some(Colorspace::C422) => (pixels, pixels / 2, pixels / 2),
         Some(Colorspace::C444) => (pixels, pixels, pixels),
         Some(Colorspace::C420jpeg) => c420_sizes,
         Some(Colorspace::C420paldv) => c420_sizes,
@@ -187,19 +196,23 @@ impl<'d, R: Read> Decoder<'d, R> {
         let mut csp = None;
         // We shouldn't convert it to string because encoding is unspecified.
         for param in raw_params.split(|&b| b == FIELD_SEP) {
-            if param.len() < 1 { continue }
+            if param.len() < 1 {
+                continue;
+            }
             let (name, value) = (param[0], &param[1..]);
             // TODO(Kagami): interlacing, pixel aspect, comment.
             match name {
-                b'W' => { width = try!(parse_bytes(value)) },
-                b'H' => { height = try!(parse_bytes(value)) },
+                b'W' => width = try!(parse_bytes(value)),
+                b'H' => height = try!(parse_bytes(value)),
                 b'F' => {
                     let parts: Vec<_> = value.splitn(2, |&b| b == RATIO_SEP).collect();
-                    if parts.len() != 2 { parse_error!() }
+                    if parts.len() != 2 {
+                        parse_error!()
+                    }
                     let num = try!(parse_bytes(parts[0]));
                     let den = try!(parse_bytes(parts[1]));
                     fps = Ratio::new(num, den);
-                },
+                }
                 b'C' => {
                     csp = match value {
                         b"mono" => Some(Colorspace::Cmono),
@@ -211,11 +224,13 @@ impl<'d, R: Read> Decoder<'d, R> {
                         b"420mpeg2" => Some(Colorspace::C420mpeg2),
                         _ => None,
                     };
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
-        if width == 0 || height == 0 { parse_error!() }
+        if width == 0 || height == 0 {
+            parse_error!()
+        }
         let (y_len, u_len, v_len) = get_plane_sizes(width, height, csp);
         let frame_size = y_len + u_len + v_len;
         let frame_buf = vec![0;frame_size];
@@ -247,65 +262,85 @@ impl<'d, R: Read> Decoder<'d, R> {
             if self.params_buf[start_params_pos] != FIELD_SEP {
                 parse_error!()
             }
-            Some((&self.params_buf[start_params_pos+1..end_params_pos]).to_owned())
+            Some((&self.params_buf[start_params_pos + 1..end_params_pos]).to_owned())
         } else {
             None
         };
         try!(self.reader.read_all(&mut self.frame_buf));
-        Ok(Frame::new([
-            &self.frame_buf[0..self.y_len],
-            &self.frame_buf[self.y_len..self.y_len+self.u_len],
-            &self.frame_buf[self.y_len+self.u_len..],
-        ], raw_params))
+        Ok(Frame::new([&self.frame_buf[0..self.y_len],
+                       &self.frame_buf[self.y_len..self.y_len + self.u_len],
+                       &self.frame_buf[self.y_len + self.u_len..]],
+                      raw_params))
     }
 
     /// Return file width.
     #[inline]
-    pub fn get_width(&self) -> usize { self.width }
+    pub fn get_width(&self) -> usize {
+        self.width
+    }
     /// Return file height.
     #[inline]
-    pub fn get_height(&self) -> usize { self.height }
+    pub fn get_height(&self) -> usize {
+        self.height
+    }
     /// Return file framerate.
     #[inline]
-    pub fn get_framerate(&self) -> Ratio { self.framerate }
+    pub fn get_framerate(&self) -> Ratio {
+        self.framerate
+    }
     /// Return file colorspace.
     ///
     /// **NOTE:** normally all .y4m should have colorspace param, but there are
     /// files encoded without that tag and it's unclear what should we do in
     /// that case. Currently C420 is implied by default as per ffmpeg behavior.
     #[inline]
-    pub fn get_colorspace(&self) -> Option<Colorspace> { self.colorspace }
+    pub fn get_colorspace(&self) -> Option<Colorspace> {
+        self.colorspace
+    }
     /// Return file raw parameters.
     #[inline]
-    pub fn get_raw_params(&self) -> &[u8] { &self.raw_params }
+    pub fn get_raw_params(&self) -> &[u8] {
+        &self.raw_params
+    }
 }
 
 /// A single frame.
 #[derive(Debug)]
 pub struct Frame<'f> {
-    planes: [&'f [u8];3],
+    planes: [&'f [u8]; 3],
     raw_params: Option<Vec<u8>>,
 }
 
 impl<'f> Frame<'f> {
     /// Create a new frame with optional parameters.
     /// No heap allocations are made.
-    pub fn new(planes: [&'f [u8];3], raw_params: Option<Vec<u8>>) -> Frame<'f> {
-        Frame {planes: planes, raw_params: raw_params}
+    pub fn new(planes: [&'f [u8]; 3], raw_params: Option<Vec<u8>>) -> Frame<'f> {
+        Frame {
+            planes: planes,
+            raw_params: raw_params,
+        }
     }
 
     /// Return Y (first) plane.
     #[inline]
-    pub fn get_y_plane(&self) -> &[u8] { self.planes[0] }
+    pub fn get_y_plane(&self) -> &[u8] {
+        self.planes[0]
+    }
     /// Return U (second) plane. Empty in case of grayscale.
     #[inline]
-    pub fn get_u_plane(&self) -> &[u8] { self.planes[1] }
+    pub fn get_u_plane(&self) -> &[u8] {
+        self.planes[1]
+    }
     /// Return V (third) plane. Empty in case of grayscale.
     #[inline]
-    pub fn get_v_plane(&self) -> &[u8] { self.planes[2] }
+    pub fn get_v_plane(&self) -> &[u8] {
+        self.planes[2]
+    }
     /// Return frame raw parameters if any.
     #[inline]
-    pub fn get_raw_params(&self) -> Option<&[u8]> { self.raw_params.as_ref().map(|v| &v[..]) }
+    pub fn get_raw_params(&self) -> Option<&[u8]> {
+        self.raw_params.as_ref().map(|v| &v[..])
+    }
 }
 
 /// Encoder builder. Allows to set y4m file parameters using builder pattern.
@@ -336,13 +371,17 @@ impl EncoderBuilder {
     }
 
     /// Write header to the stream and create encoder instance.
-    pub fn write_header<W: Write>(self, writer: &mut W) -> Result<Encoder<W>, Error> {
+    pub fn write_header<W: Write>(self, mut writer: W) -> Result<Encoder<W>, Error> {
         // XXX(Kagami): Beware that FILE_MAGICK already contains space.
         try!(writer.write_all(FILE_MAGICK));
-        try!(write!(writer, "W{} H{} F{}", self.width, self.height, self.framerate));
+        try!(write!(writer,
+                    "W{} H{} F{}",
+                    self.width,
+                    self.height,
+                    self.framerate));
         match self.colorspace {
             Some(csp) => try!(write!(writer, " {:?}", csp)),
-            _ => {},
+            _ => {}
         }
         try!(writer.write_all(&[TERMINATOR]));
         let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
@@ -356,19 +395,18 @@ impl EncoderBuilder {
 }
 
 /// YUV4MPEG2 encoder.
-pub struct Encoder<'e, W: Write + 'e> {
-    writer: &'e mut W,
+pub struct Encoder<W: Write> {
+    writer: W,
     y_len: usize,
     u_len: usize,
     v_len: usize,
 }
 
-impl<'e, W: Write> Encoder<'e, W> {
+impl<W: Write> Encoder<W> {
     /// Write next frame to the stream.
     pub fn write_frame(&mut self, frame: &Frame) -> Result<(), Error> {
-        if frame.get_y_plane().len() != self.y_len
-            ||  frame.get_u_plane().len() != self.u_len
-            ||  frame.get_v_plane().len() != self.v_len {
+        if frame.get_y_plane().len() != self.y_len || frame.get_u_plane().len() != self.u_len ||
+           frame.get_v_plane().len() != self.v_len {
             return Err(Error::BadInput);
         }
         try!(self.writer.write_all(FRAME_MAGICK));
@@ -376,8 +414,8 @@ impl<'e, W: Write> Encoder<'e, W> {
             Some(params) => {
                 try!(self.writer.write_all(&[FIELD_SEP]));
                 try!(self.writer.write_all(params));
-            },
-            _ => {},
+            }
+            _ => {}
         }
         try!(self.writer.write_all(&[TERMINATOR]));
         try!(self.writer.write_all(frame.get_y_plane()));
