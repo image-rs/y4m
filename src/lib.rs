@@ -23,6 +23,8 @@ pub enum Error {
     EOF,
     /// Bad input parameters provided.
     BadInput,
+    /// Unknown colorspace (possibly just unimplemented)
+    UnknownColorspace,
     /// Error while parsing the file/frame header.
     // TODO(Kagami): Better granularity of parse errors.
     ParseError,
@@ -209,7 +211,7 @@ impl<'d, R: Read> Decoder<'d, R> {
                         b"420jpeg" => Some(Colorspace::C420jpeg),
                         b"420paldv" => Some(Colorspace::C420paldv),
                         b"420mpeg2" => Some(Colorspace::C420mpeg2),
-                        _ => None,
+                        _ => return Err(Error::UnknownColorspace)
                     };
                 },
                 _ => {},
