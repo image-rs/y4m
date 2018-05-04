@@ -114,7 +114,7 @@ impl fmt::Display for Ratio {
 }
 
 /// Colorspace. It's a color model in fact, but let's conform to the spec.
-/// **NOTE:** Only 8-bit formats are currently supported.
+/// **NOTE:** Only 8-bit and 10-bit formats are currently supported.
 ///
 /// > yuv4mpeg can only handle yuv444p, yuv422p, yuv420p, yuv411p and gray8
 /// pixel formats. And using 'strict -1' also yuv444p9, yuv422p9, yuv420p9,
@@ -129,6 +129,8 @@ pub enum Colorspace {
     Cmono,
     /// 4:2:0 with coincident chroma planes, 8-bit.
     C420,
+    /// 4:2:0 with coincident chroma planes, 10-bit.
+    C420p10,
     /// 4:2:0 with biaxially-displaced chroma planes, 8-bit.
     C420jpeg,
     /// 4:2:0 with vertically-displaced chroma planes, 8-bit.
@@ -137,20 +139,56 @@ pub enum Colorspace {
     C420mpeg2,
     /// 4:2:2, 8-bit.
     C422,
+    /// 4:2:2, 10-bit.
+    C422p10,
     /// 4:4:4, 8-bit.
     C444,
+    /// 4:4:4, 10-bit.
+    C444p10,
+}
+
+impl Colorspace {
+    /// Return the bit depth per sample
+    #[inline]
+    pub fn get_bit_depth(&self) -> usize {
+        match *self {
+            Colorspace::Cmono |
+            Colorspace::C420 |
+            Colorspace::C422 |
+            Colorspace::C444 |
+            Colorspace::C420jpeg |
+            Colorspace::C420paldv |
+            Colorspace::C420mpeg2 => 8,
+            Colorspace::C420p10 |
+            Colorspace::C422p10 |
+            Colorspace::C444p10 => 10,
+        }
+    }
+
+    /// Return the number of bytes in a sample
+    #[inline]
+    pub fn get_bytes_per_sample(&self) -> usize {
+        if self.get_bit_depth() <= 8 {
+            1
+        } else {
+            2
+        }
+    }
 }
 
 fn get_plane_sizes(
     width: usize, height: usize, colorspace: Colorspace,
 ) -> (usize, usize, usize) {
-    let pixels = width * height;
+    let pixels = width * height * colorspace.get_bytes_per_sample();
     let c420_sizes = (pixels, pixels/4, pixels/4);
     match colorspace {
         Colorspace::Cmono => (pixels, 0, 0),
         Colorspace::C420 => c420_sizes,
+        Colorspace::C420p10 => c420_sizes,
         Colorspace::C422 => (pixels, pixels/2, pixels/2),
+        Colorspace::C422p10 => (pixels, pixels/2, pixels/2),
         Colorspace::C444 => (pixels, pixels, pixels),
+        Colorspace::C444p10 => (pixels, pixels, pixels),
         Colorspace::C420jpeg => c420_sizes,
         Colorspace::C420paldv => c420_sizes,
         Colorspace::C420mpeg2 => c420_sizes,
@@ -205,8 +243,11 @@ impl<'d, R: Read> Decoder<'d, R> {
                     csp = match value {
                         b"mono" => Some(Colorspace::Cmono),
                         b"420" => Some(Colorspace::C420),
+                        b"420p10" => Some(Colorspace::C420p10),
                         b"422" => Some(Colorspace::C422),
+                        b"422p10" => Some(Colorspace::C422p10),
                         b"444" => Some(Colorspace::C444),
+                        b"444p10" => Some(Colorspace::C444p10),
                         b"420jpeg" => Some(Colorspace::C420jpeg),
                         b"420paldv" => Some(Colorspace::C420paldv),
                         b"420mpeg2" => Some(Colorspace::C420mpeg2),
@@ -280,6 +321,16 @@ impl<'d, R: Read> Decoder<'d, R> {
     /// Return file raw parameters.
     #[inline]
     pub fn get_raw_params(&self) -> &[u8] { &self.raw_params }
+    /// Return the bit depth per sample
+    #[inline]
+    pub fn get_bit_depth(&self) -> usize {
+        self.colorspace.get_bit_depth()
+    }
+    /// Return the number of bytes in a sample
+    #[inline]
+    pub fn get_bytes_per_sample(&self) -> usize {
+        self.colorspace.get_bytes_per_sample()
+    }
 }
 
 /// A single frame.
