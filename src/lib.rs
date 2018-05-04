@@ -59,7 +59,7 @@ impl<R: Read> EnhancedRead for R {
     fn read_until(&mut self, ch: u8, buf: &mut [u8]) -> Result<usize, Error> {
         let mut collected = 0;
         while collected < buf.len() {
-            let chunk_size = try!(self.read(&mut buf[collected..collected+1]));
+            let chunk_size = self.read(&mut buf[collected..collected+1])?;
             if chunk_size == 0 {
                 return Err(Error::EOF);
             }
@@ -74,7 +74,7 @@ impl<R: Read> EnhancedRead for R {
     fn read_all(&mut self, buf: &mut [u8]) -> Result<(), Error> {
         let mut collected = 0;
         while collected < buf.len() {
-            let chunk_size = try!(self.read(&mut buf[collected..]));
+            let chunk_size = self.read(&mut buf[collected..])?;
             if chunk_size == 0 {
                 return Err(Error::EOF);
             }
@@ -86,7 +86,7 @@ impl<R: Read> EnhancedRead for R {
 
 fn parse_bytes(buf: &[u8]) -> Result<usize, Error> {
     // A bit kludgy but seems like there is no other way.
-    Ok(try!(try!(str::from_utf8(buf)).parse()))
+    Ok(str::from_utf8(buf)?.parse()?)
 }
 
 /// Simple ratio structure since stdlib lacks one.
@@ -174,7 +174,7 @@ impl<'d, R: Read> Decoder<'d, R> {
     /// Create a new decoder instance.
     pub fn new(reader: &mut R) -> Result<Decoder<R>, Error> {
         let mut params_buf = vec![0;MAX_PARAMS_SIZE];
-        let end_params_pos = try!(reader.read_until(TERMINATOR, &mut params_buf));
+        let end_params_pos = reader.read_until(TERMINATOR, &mut params_buf)?;
         if end_params_pos < FILE_MAGICK.len() || !params_buf.starts_with(FILE_MAGICK) {
             parse_error!()
         }
@@ -191,13 +191,13 @@ impl<'d, R: Read> Decoder<'d, R> {
             let (name, value) = (param[0], &param[1..]);
             // TODO(Kagami): interlacing, pixel aspect, comment.
             match name {
-                b'W' => { width = try!(parse_bytes(value)) },
-                b'H' => { height = try!(parse_bytes(value)) },
+                b'W' => { width = parse_bytes(value)? },
+                b'H' => { height = parse_bytes(value)? },
                 b'F' => {
                     let parts: Vec<_> = value.splitn(2, |&b| b == RATIO_SEP).collect();
                     if parts.len() != 2 { parse_error!() }
-                    let num = try!(parse_bytes(parts[0]));
-                    let den = try!(parse_bytes(parts[1]));
+                    let num = parse_bytes(parts[0])?;
+                    let den = parse_bytes(parts[1])?;
                     fps = Ratio::new(num, den);
                 },
                 b'C' => {
@@ -236,7 +236,7 @@ impl<'d, R: Read> Decoder<'d, R> {
     /// Iterate over frames, without extra heap allocations. End of input is
     /// indicated by `Error::EOF`.
     pub fn read_frame(&mut self) -> Result<Frame, Error> {
-        let end_params_pos = try!(self.reader.read_until(TERMINATOR, &mut self.params_buf));
+        let end_params_pos = self.reader.read_until(TERMINATOR, &mut self.params_buf)?;
         if end_params_pos < FRAME_MAGICK.len() || !self.params_buf.starts_with(FRAME_MAGICK) {
             parse_error!()
         }
@@ -251,7 +251,7 @@ impl<'d, R: Read> Decoder<'d, R> {
         } else {
             None
         };
-        try!(self.reader.read_all(&mut self.frame_buf));
+        self.reader.read_all(&mut self.frame_buf)?;
         Ok(Frame::new([
             &self.frame_buf[0..self.y_len],
             &self.frame_buf[self.y_len..self.y_len+self.u_len],
@@ -338,13 +338,13 @@ impl EncoderBuilder {
     /// Write header to the stream and create encoder instance.
     pub fn write_header<W: Write>(self, writer: &mut W) -> Result<Encoder<W>, Error> {
         // XXX(Kagami): Beware that FILE_MAGICK already contains space.
-        try!(writer.write_all(FILE_MAGICK));
-        try!(write!(writer, "W{} H{} F{}", self.width, self.height, self.framerate));
+        writer.write_all(FILE_MAGICK)?;
+        write!(writer, "W{} H{} F{}", self.width, self.height, self.framerate)?;
         match self.colorspace {
-            Some(csp) => try!(write!(writer, " {:?}", csp)),
+            Some(csp) => write!(writer, " {:?}", csp)?,
             _ => {},
         }
-        try!(writer.write_all(&[TERMINATOR]));
+        writer.write_all(&[TERMINATOR])?;
         let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
         Ok(Encoder {
             writer: writer,
@@ -371,18 +371,18 @@ impl<'e, W: Write> Encoder<'e, W> {
             ||  frame.get_v_plane().len() != self.v_len {
             return Err(Error::BadInput);
         }
-        try!(self.writer.write_all(FRAME_MAGICK));
+        self.writer.write_all(FRAME_MAGICK)?;
         match frame.get_raw_params() {
             Some(params) => {
-                try!(self.writer.write_all(&[FIELD_SEP]));
-                try!(self.writer.write_all(params));
+                self.writer.write_all(&[FIELD_SEP])?;
+                self.writer.write_all(params)?;
             },
             _ => {},
         }
-        try!(self.writer.write_all(&[TERMINATOR]));
-        try!(self.writer.write_all(frame.get_y_plane()));
-        try!(self.writer.write_all(frame.get_u_plane()));
-        try!(self.writer.write_all(frame.get_v_plane()));
+        self.writer.write_all(&[TERMINATOR])?;
+        self.writer.write_all(frame.get_y_plane())?;
+        self.writer.write_all(frame.get_u_plane())?;
+        self.writer.write_all(frame.get_v_plane())?;
         Ok(())
     }
 }
