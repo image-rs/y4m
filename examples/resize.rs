@@ -4,6 +4,7 @@ extern crate resize;
 use std::io;
 use std::env;
 use std::fs::File;
+use resize::Pixel::Gray8;
 use resize::Type::Triangle;
 
 fn main() {
@@ -19,10 +20,14 @@ fn main() {
     };
     let mut decoder = y4m::decode(&mut infh).unwrap();
 
+    if decoder.get_bit_depth() != 8 {
+        panic!("Unsupported bit depth {}, this example only supports 8.",
+            decoder.get_bit_depth());
+    }
     let (w1, h1) = (decoder.get_width(), decoder.get_height());
     let dst_dims: Vec<_> = args[2].split("x").map(|s| s.parse().unwrap()).collect();
     let (w2, h2) = (dst_dims[0], dst_dims[1]);
-    let mut resizer = resize::new(w1, h1, w2, h2, Triangle);
+    let mut resizer = resize::new(w1, h1, w2, h2, Gray8, Triangle);
     let mut dst = vec![0;w2*h2];
 
     let mut outfh: Box<io::Write> = if args[3] == "-" {
@@ -38,7 +43,7 @@ fn main() {
     loop {
         match decoder.read_frame() {
             Ok(frame) => {
-                resizer.run(frame.get_y_plane(), &mut dst);
+                resizer.resize(frame.get_y_plane(), &mut dst);
                 let out_frame = y4m::Frame::new([&dst, &[], &[]], None);
                 if encoder.write_frame(&out_frame).is_err() { break }
             },
