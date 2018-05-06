@@ -14,7 +14,7 @@ let mut infh = io::stdin();
 let mut outfh = io::stdout();
 let mut dec = y4m::decode(&mut infh).unwrap();
 let mut enc = y4m::encode(dec.get_width(), dec.get_height(), dec.get_framerate())
-    .with_colorspace(dec.get_colorspace().unwrap_or(y4m::Colorspace::C420))
+    .with_colorspace(dec.get_colorspace())
     .write_header(&mut outfh)
     .unwrap();
 loop {
