@@ -142,19 +142,18 @@ pub enum Colorspace {
 }
 
 fn get_plane_sizes(
-    width: usize, height: usize, colorspace: Option<Colorspace>,
+    width: usize, height: usize, colorspace: Colorspace,
 ) -> (usize, usize, usize) {
     let pixels = width * height;
     let c420_sizes = (pixels, pixels/4, pixels/4);
     match colorspace {
-        Some(Colorspace::Cmono) => (pixels, 0, 0),
-        Some(Colorspace::C420) => c420_sizes,
-        Some(Colorspace::C422) => (pixels, pixels/2, pixels/2),
-        Some(Colorspace::C444) => (pixels, pixels, pixels),
-        Some(Colorspace::C420jpeg) => c420_sizes,
-        Some(Colorspace::C420paldv) => c420_sizes,
-        Some(Colorspace::C420mpeg2) => c420_sizes,
-        None => c420_sizes,
+        Colorspace::Cmono => (pixels, 0, 0),
+        Colorspace::C420 => c420_sizes,
+        Colorspace::C422 => (pixels, pixels/2, pixels/2),
+        Colorspace::C444 => (pixels, pixels, pixels),
+        Colorspace::C420jpeg => c420_sizes,
+        Colorspace::C420paldv => c420_sizes,
+        Colorspace::C420mpeg2 => c420_sizes,
     }
 }
 
@@ -167,7 +166,7 @@ pub struct Decoder<'d, R: Read + 'd> {
     width: usize,
     height: usize,
     framerate: Ratio,
-    colorspace: Option<Colorspace>,
+    colorspace: Colorspace,
     y_len: usize,
     u_len: usize,
 }
@@ -217,6 +216,7 @@ impl<'d, R: Read> Decoder<'d, R> {
                 _ => {},
             }
         }
+        let csp = csp.unwrap_or(Colorspace::C420);
         if width == 0 || height == 0 { parse_error!() }
         let (y_len, u_len, v_len) = get_plane_sizes(width, height, csp);
         let frame_size = y_len + u_len + v_len;
@@ -276,7 +276,7 @@ impl<'d, R: Read> Decoder<'d, R> {
     /// files encoded without that tag and it's unclear what should we do in
     /// that case. Currently C420 is implied by default as per ffmpeg behavior.
     #[inline]
-    pub fn get_colorspace(&self) -> Option<Colorspace> { self.colorspace }
+    pub fn get_colorspace(&self) -> Colorspace { self.colorspace }
     /// Return file raw parameters.
     #[inline]
     pub fn get_raw_params(&self) -> &[u8] { &self.raw_params }
@@ -317,7 +317,7 @@ pub struct EncoderBuilder {
     width: usize,
     height: usize,
     framerate: Ratio,
-    colorspace: Option<Colorspace>,
+    colorspace: Colorspace,
 }
 
 impl EncoderBuilder {
@@ -327,13 +327,13 @@ impl EncoderBuilder {
             width: width,
             height: height,
             framerate: framerate,
-            colorspace: None,
+            colorspace: Colorspace::C420,
         }
     }
 
     /// Specify file colorspace.
     pub fn with_colorspace(mut self, colorspace: Colorspace) -> Self {
-        self.colorspace = Some(colorspace);
+        self.colorspace = colorspace;
         self
     }
 
@@ -342,10 +342,7 @@ impl EncoderBuilder {
         // XXX(Kagami): Beware that FILE_MAGICK already contains space.
         writer.write_all(FILE_MAGICK)?;
         write!(writer, "W{} H{} F{}", self.width, self.height, self.framerate)?;
-        match self.colorspace {
-            Some(csp) => write!(writer, " {:?}", csp)?,
-            _ => {},
-        }
+        write!(writer, " {:?}", self.colorspace)?;
         writer.write_all(&[TERMINATOR])?;
         let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
         Ok(Encoder {
