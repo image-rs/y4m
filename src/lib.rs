@@ -113,16 +113,15 @@ impl fmt::Display for Ratio {
     }
 }
 
-/// Colorspace. It's a color model in fact, but let's conform to the spec.
-/// **NOTE:** Only 8-bit and 10-bit formats are currently supported.
+/// Colorspace (color model/pixel format). Only subset of them is supported.
+///
+/// From libavformat/yuv4mpegenc.c:
 ///
 /// > yuv4mpeg can only handle yuv444p, yuv422p, yuv420p, yuv411p and gray8
 /// pixel formats. And using 'strict -1' also yuv444p9, yuv422p9, yuv420p9,
 /// yuv444p10, yuv422p10, yuv420p10, yuv444p12, yuv422p12, yuv420p12,
-/// yuv444p14, yuv422p14, yuv420p14, yuv444p16, yuv422p16, yuv420p16 and gray16
-/// pixel formats.
-///
-/// (c) ffmpeg.
+/// yuv444p14, yuv422p14, yuv420p14, yuv444p16, yuv422p16, yuv420p16, gray9,
+/// gray10, gray12 and gray16 pixel formats.
 #[derive(Debug, Clone, Copy)]
 pub enum Colorspace {
     /// Grayscale only, 8-bit.
