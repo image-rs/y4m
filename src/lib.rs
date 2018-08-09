@@ -199,8 +199,8 @@ fn get_plane_sizes(
         Colorspace::C420 |
         Colorspace::C420p10 |
         Colorspace::C420p12 |
-        Colorspace::C420jpeg | 
-        Colorspace::C420paldv | 
+        Colorspace::C420jpeg |
+        Colorspace::C420paldv |
         Colorspace::C420mpeg2 => c420_sizes,
         Colorspace::C422 |
         Colorspace::C422p10 |
