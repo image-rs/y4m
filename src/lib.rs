@@ -23,7 +23,7 @@ pub enum Error {
     EOF,
     /// Bad input parameters provided.
     BadInput,
-    /// Unknown colorspace (possibly just unimplemented)
+    /// Unknown colorspace (possibly just unimplemented).
     UnknownColorspace,
     /// Error while parsing the file/frame header.
     // TODO(Kagami): Better granularity of parse errors.
@@ -37,7 +37,12 @@ macro_rules! parse_error {
 }
 
 impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Error { Error::IoError(err) }
+    fn from(err: io::Error) -> Error {
+        match err.kind() {
+            io::ErrorKind::UnexpectedEof => Error::EOF,
+            _ => Error::IoError(err),
+        }
+    }
 }
 
 impl From<num::ParseIntError> for Error {
@@ -50,8 +55,6 @@ impl From<str::Utf8Error> for Error {
 
 trait EnhancedRead {
     fn read_until(&mut self, ch: u8, buf: &mut [u8]) -> Result<usize, Error>;
-    // While Read::read_exact is unstable.
-    fn read_all(&mut self, buf: &mut [u8]) -> Result<(), Error>;
 }
 
 impl<R: Read> EnhancedRead for R {
@@ -71,18 +74,6 @@ impl<R: Read> EnhancedRead for R {
             collected += chunk_size;
         }
         parse_error!()
-    }
-
-    fn read_all(&mut self, buf: &mut [u8]) -> Result<(), Error> {
-        let mut collected = 0;
-        while collected < buf.len() {
-            let chunk_size = self.read(&mut buf[collected..])?;
-            if chunk_size == 0 {
-                return Err(Error::EOF);
-            }
-            collected += chunk_size;
-        }
-        Ok(())
     }
 }
 
@@ -269,8 +260,8 @@ impl<'d, R: Read> Decoder<'d, R> {
                         b"420jpeg" => Some(Colorspace::C420jpeg),
                         b"420paldv" => Some(Colorspace::C420paldv),
                         b"420mpeg2" => Some(Colorspace::C420mpeg2),
-                        _ => return Err(Error::UnknownColorspace)
-                    };
+                        _ => return Err(Error::UnknownColorspace),
+                    }
                 },
                 _ => {},
             }
@@ -312,7 +303,7 @@ impl<'d, R: Read> Decoder<'d, R> {
         } else {
             None
         };
-        self.reader.read_all(&mut self.frame_buf)?;
+        self.reader.read_exact(&mut self.frame_buf)?;
         Ok(Frame::new([
             &self.frame_buf[0..self.y_len],
             &self.frame_buf[self.y_len..self.y_len+self.u_len],
@@ -435,8 +426,8 @@ impl<'e, W: Write> Encoder<'e, W> {
     /// Write next frame to the stream.
     pub fn write_frame(&mut self, frame: &Frame) -> Result<(), Error> {
         if frame.get_y_plane().len() != self.y_len
-            ||  frame.get_u_plane().len() != self.u_len
-            ||  frame.get_v_plane().len() != self.v_len {
+            || frame.get_u_plane().len() != self.u_len
+            || frame.get_v_plane().len() != self.v_len {
             return Err(Error::BadInput);
         }
         self.writer.write_all(FRAME_MAGICK)?;
