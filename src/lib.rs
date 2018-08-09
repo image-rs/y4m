@@ -131,6 +131,8 @@ pub enum Colorspace {
     C420,
     /// 4:2:0 with coincident chroma planes, 10-bit.
     C420p10,
+    /// 4:2:0 with coincident chroma planes, 12-bit.
+    C420p12,
     /// 4:2:0 with biaxially-displaced chroma planes, 8-bit.
     C420jpeg,
     /// 4:2:0 with vertically-displaced chroma planes, 8-bit.
@@ -141,10 +143,14 @@ pub enum Colorspace {
     C422,
     /// 4:2:2, 10-bit.
     C422p10,
+    /// 4:2:2, 12-bit.
+    C422p12,
     /// 4:4:4, 8-bit.
     C444,
     /// 4:4:4, 10-bit.
     C444p10,
+    /// 4:4:4, 12-bit.
+    C444p12
 }
 
 impl Colorspace {
@@ -162,6 +168,9 @@ impl Colorspace {
             Colorspace::C420p10 |
             Colorspace::C422p10 |
             Colorspace::C444p10 => 10,
+            Colorspace::C420p12 |
+            Colorspace::C422p12 |
+            Colorspace::C444p12 => 12,
         }
     }
 
@@ -179,19 +188,26 @@ impl Colorspace {
 fn get_plane_sizes(
     width: usize, height: usize, colorspace: Colorspace,
 ) -> (usize, usize, usize) {
-    let pixels = width * height * colorspace.get_bytes_per_sample();
-    let c420_sizes = (pixels, pixels/4, pixels/4);
+    let y_plane_size = width * height * colorspace.get_bytes_per_sample();
+
+    let c420_sizes = (y_plane_size, y_plane_size/4, y_plane_size/4);
+    let c422_sizes = (y_plane_size, y_plane_size/2, y_plane_size/2);
+    let c444_sizes = (y_plane_size, y_plane_size, y_plane_size);
+
     match colorspace {
-        Colorspace::Cmono => (pixels, 0, 0),
-        Colorspace::C420 => c420_sizes,
-        Colorspace::C420p10 => c420_sizes,
-        Colorspace::C422 => (pixels, pixels/2, pixels/2),
-        Colorspace::C422p10 => (pixels, pixels/2, pixels/2),
-        Colorspace::C444 => (pixels, pixels, pixels),
-        Colorspace::C444p10 => (pixels, pixels, pixels),
-        Colorspace::C420jpeg => c420_sizes,
-        Colorspace::C420paldv => c420_sizes,
+        Colorspace::Cmono => (y_plane_size, 0, 0),
+        Colorspace::C420 |
+        Colorspace::C420p10 |
+        Colorspace::C420p12 |
+        Colorspace::C420jpeg | 
+        Colorspace::C420paldv | 
         Colorspace::C420mpeg2 => c420_sizes,
+        Colorspace::C422 |
+        Colorspace::C422p10 |
+        Colorspace::C422p12 => c422_sizes,
+        Colorspace::C444 |
+        Colorspace::C444p10 |
+        Colorspace::C444p12 => c444_sizes,
     }
 }
 
@@ -244,10 +260,13 @@ impl<'d, R: Read> Decoder<'d, R> {
                         b"mono" => Some(Colorspace::Cmono),
                         b"420" => Some(Colorspace::C420),
                         b"420p10" => Some(Colorspace::C420p10),
+                        b"420p12" => Some(Colorspace::C420p12),
                         b"422" => Some(Colorspace::C422),
                         b"422p10" => Some(Colorspace::C422p10),
+                        b"422p12" => Some(Colorspace::C422p12),
                         b"444" => Some(Colorspace::C444),
                         b"444p10" => Some(Colorspace::C444p10),
+                        b"444p12" => Some(Colorspace::C444p12),
                         b"420jpeg" => Some(Colorspace::C420jpeg),
                         b"420paldv" => Some(Colorspace::C420paldv),
                         b"420mpeg2" => Some(Colorspace::C420mpeg2),
