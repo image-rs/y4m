@@ -345,15 +345,28 @@ impl<'d, R: Read> Decoder<'d, R> {
 /// A single frame.
 #[derive(Debug)]
 pub struct Frame<'f> {
-    planes: [&'f [u8];3],
+    planes: [&'f [u8]; 3],
     raw_params: Option<Vec<u8>>,
 }
 
 impl<'f> Frame<'f> {
     /// Create a new frame with optional parameters.
     /// No heap allocations are made.
-    pub fn new(planes: [&'f [u8];3], raw_params: Option<Vec<u8>>) -> Frame<'f> {
-        Frame {planes: planes, raw_params: raw_params}
+    pub fn new(planes: [&'f [u8]; 3], raw_params: Option<Vec<u8>>) -> Frame<'f> {
+        Frame {
+            planes: planes, 
+            raw_params: raw_params
+        }
+    }
+
+    /// Create a new frame from data in 16-bit format.
+    pub fn from_u16(planes: [&'f [u16]; 3], raw_params: Option<Vec<u8>>) -> Frame<'f> {
+        Frame::new([
+            unsafe { std::slice::from_raw_parts::<u8>(planes[0].as_ptr() as (*const u8), planes[0].len() * 2) },
+            unsafe { std::slice::from_raw_parts::<u8>(planes[1].as_ptr() as (*const u8), planes[1].len() * 2) },
+            unsafe { std::slice::from_raw_parts::<u8>(planes[2].as_ptr() as (*const u8), planes[2].len() * 2) },
+        ],
+        raw_params)
     }
 
     /// Return Y (first) plane.
