@@ -354,8 +354,8 @@ impl<'f> Frame<'f> {
     /// No heap allocations are made.
     pub fn new(planes: [&'f [u8]; 3], raw_params: Option<Vec<u8>>) -> Frame<'f> {
         Frame {
-            planes: planes, 
-            raw_params: raw_params
+            planes: planes,
+            raw_params: raw_params,
         }
     }
 
