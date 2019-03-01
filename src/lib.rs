@@ -9,8 +9,8 @@ use std::io::Read;
 use std::io::Write;
 
 const MAX_PARAMS_SIZE: usize = 1024;
-const FILE_MAGICK: &'static [u8] = b"YUV4MPEG2 ";
-const FRAME_MAGICK: &'static [u8] = b"FRAME";
+const FILE_MAGICK: &[u8] = b"YUV4MPEG2 ";
+const FRAME_MAGICK: &[u8] = b"FRAME";
 const TERMINATOR: u8 = 0x0A;
 const FIELD_SEP: u8 = b' ';
 const RATIO_SEP: u8 = b':';
@@ -64,7 +64,7 @@ impl<R: Read> EnhancedRead for R {
     fn read_until(&mut self, ch: u8, buf: &mut [u8]) -> Result<usize, Error> {
         let mut collected = 0;
         while collected < buf.len() {
-            let chunk_size = self.read(&mut buf[collected..collected+1])?;
+            let chunk_size = self.read(&mut buf[collected..=collected])?;
             if chunk_size == 0 {
                 return Err(Error::EOF);
             }
@@ -94,7 +94,7 @@ pub struct Ratio {
 impl Ratio {
     /// Create a new ratio.
     pub fn new(num: usize, den: usize) -> Ratio {
-        Ratio {num: num, den: den}
+        Ratio {num, den}
     }
 }
 
@@ -146,8 +146,8 @@ pub enum Colorspace {
 impl Colorspace {
     /// Return the bit depth per sample
     #[inline]
-    pub fn get_bit_depth(&self) -> usize {
-        match *self {
+    pub fn get_bit_depth(self) -> usize {
+        match self {
             Colorspace::Cmono |
             Colorspace::C420 |
             Colorspace::C422 |
@@ -166,7 +166,7 @@ impl Colorspace {
 
     /// Return the number of bytes in a sample
     #[inline]
-    pub fn get_bytes_per_sample(&self) -> usize {
+    pub fn get_bytes_per_sample(self) -> usize {
         if self.get_bit_depth() <= 8 {
             1
         } else {
@@ -228,11 +228,11 @@ impl<'d, R: Read> Decoder<'d, R> {
         let mut height = 0;
         // Framerate is actually required per spec, but let's be a bit more
         // permissive as per ffmpeg behavior.
-        let mut fps = Ratio::new(25, 1);
-        let mut csp = None;
+        let mut framerate = Ratio::new(25, 1);
+        let mut colorspace = None;
         // We shouldn't convert it to string because encoding is unspecified.
         for param in raw_params.split(|&b| b == FIELD_SEP) {
-            if param.len() < 1 { continue }
+            if param.is_empty() { continue }
             let (name, value) = (param[0], &param[1..]);
             // TODO(Kagami): interlacing, pixel aspect, comment.
             match name {
@@ -243,10 +243,10 @@ impl<'d, R: Read> Decoder<'d, R> {
                     if parts.len() != 2 { parse_error!() }
                     let num = parse_bytes(parts[0])?;
                     let den = parse_bytes(parts[1])?;
-                    fps = Ratio::new(num, den);
+                    framerate = Ratio::new(num, den);
                 },
                 b'C' => {
-                    csp = match value {
+                    colorspace = match value {
                         b"mono" => Some(Colorspace::Cmono),
                         b"420" => Some(Colorspace::C420),
                         b"420p10" => Some(Colorspace::C420p10),
@@ -266,22 +266,22 @@ impl<'d, R: Read> Decoder<'d, R> {
                 _ => {},
             }
         }
-        let csp = csp.unwrap_or(Colorspace::C420);
+        let colorspace = colorspace.unwrap_or(Colorspace::C420);
         if width == 0 || height == 0 { parse_error!() }
-        let (y_len, u_len, v_len) = get_plane_sizes(width, height, csp);
+        let (y_len, u_len, v_len) = get_plane_sizes(width, height, colorspace);
         let frame_size = y_len + u_len + v_len;
         let frame_buf = vec![0;frame_size];
         Ok(Decoder {
-            reader: reader,
-            params_buf: params_buf,
-            frame_buf: frame_buf,
-            raw_params: raw_params,
-            width: width,
-            height: height,
-            framerate: fps,
-            colorspace: csp,
-            y_len: y_len,
-            u_len: u_len,
+            reader,
+            params_buf,
+            frame_buf,
+            raw_params,
+            width,
+            height,
+            framerate,
+            colorspace,
+            y_len,
+            u_len,
         })
     }
 
@@ -354,8 +354,8 @@ impl<'f> Frame<'f> {
     /// No heap allocations are made.
     pub fn new(planes: [&'f [u8]; 3], raw_params: Option<Vec<u8>>) -> Frame<'f> {
         Frame {
-            planes: planes,
-            raw_params: raw_params,
+            planes,
+            raw_params,
         }
     }
 
@@ -397,9 +397,9 @@ impl EncoderBuilder {
     /// Create a new encoder builder.
     pub fn new(width: usize, height: usize, framerate: Ratio) -> EncoderBuilder {
         EncoderBuilder {
-            width: width,
-            height: height,
-            framerate: framerate,
+            width,
+            height,
+            framerate,
             colorspace: Colorspace::C420,
         }
     }
@@ -419,10 +419,10 @@ impl EncoderBuilder {
         writer.write_all(&[TERMINATOR])?;
         let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
         Ok(Encoder {
-            writer: writer,
-            y_len: y_len,
-            u_len: u_len,
-            v_len: v_len,
+            writer,
+            y_len,
+            u_len,
+            v_len,
         })
     }
 }
@@ -444,12 +444,9 @@ impl<'e, W: Write> Encoder<'e, W> {
             return Err(Error::BadInput);
         }
         self.writer.write_all(FRAME_MAGICK)?;
-        match frame.get_raw_params() {
-            Some(params) => {
-                self.writer.write_all(&[FIELD_SEP])?;
-                self.writer.write_all(params)?;
-            },
-            _ => {},
+        if let Some(params) = frame.get_raw_params() {
+            self.writer.write_all(&[FIELD_SEP])?;
+            self.writer.write_all(params)?;
         }
         self.writer.write_all(&[TERMINATOR])?;
         self.writer.write_all(frame.get_y_plane())?;
