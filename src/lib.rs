@@ -180,8 +180,11 @@ impl Colorspace {
 fn get_plane_sizes(width: usize, height: usize, colorspace: Colorspace) -> (usize, usize, usize) {
     let y_plane_size = width * height * colorspace.get_bytes_per_sample();
 
-    let c420_sizes = (y_plane_size, y_plane_size / 4, y_plane_size / 4);
-    let c422_sizes = (y_plane_size, y_plane_size / 2, y_plane_size / 2);
+    let c420_chroma_size = (width / 2) * (height / 2) * colorspace.get_bytes_per_sample();
+    let c422_chroma_size = (width / 2) * height * colorspace.get_bytes_per_sample();
+
+    let c420_sizes = (y_plane_size, c420_chroma_size, c420_chroma_size);
+    let c422_sizes = (y_plane_size, c422_chroma_size, c422_chroma_size);
     let c444_sizes = (y_plane_size, y_plane_size, y_plane_size);
 
     match colorspace {
