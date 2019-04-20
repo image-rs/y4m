@@ -1,4 +1,4 @@
-# y4m [![Build Status](https://travis-ci.org/PistonDevelopers/y4m.png?branch=master)](https://travis-ci.org/PistonDevelopers/y4m) [![crates.io](https://img.shields.io/crates/v/y4m.svg)](https://crates.io/crates/y4m)
+# y4m [![Build Status](https://travis-ci.org/image-rs/y4m.png?branch=master)](https://travis-ci.org/image-rs/y4m) [![crates.io](https://img.shields.io/crates/v/y4m.svg)](https://crates.io/crates/y4m)
 
 YUV4MPEG2 (.y4m) Encoder/Decoder. [Format specification](http://wiki.multimedia.cx/index.php?title=YUV4MPEG2).
 
