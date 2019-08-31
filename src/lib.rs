@@ -30,6 +30,8 @@ pub enum Error {
     ParseError,
     /// Error while reading/writing the file.
     IoError(io::Error),
+    /// Out of memory (limits exceeded).
+    OutOfMemory,
 }
 
 macro_rules! parse_error {
@@ -200,6 +202,31 @@ fn get_plane_sizes(width: usize, height: usize, colorspace: Colorspace) -> (usiz
     }
 }
 
+/// Limits on the resources `Decoder` is allowed to use.
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    /// Maximum number of bytes decoder is allowed to allocate, default is 64 MiB.
+    pub bytes: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Limits {
+        Limits {
+            bytes: 64 * 1024 * 1024,
+        }
+    }
+}
+
+macro_rules! update_limits {
+    // XXX(Kagami): Should be ident but Rust won't allow `self.myvar` then.
+    ($left:expr, $needed:expr) => {
+        if $left < ($needed) {
+            return Err(Error::OutOfMemory);
+        }
+        $left -= $needed;
+    };
+}
+
 /// YUV4MPEG2 decoder.
 pub struct Decoder<'d, R: Read + 'd> {
     reader: &'d mut R,
@@ -212,11 +239,19 @@ pub struct Decoder<'d, R: Read + 'd> {
     colorspace: Colorspace,
     y_len: usize,
     u_len: usize,
+    memory_left: usize,
 }
 
 impl<'d, R: Read> Decoder<'d, R> {
     /// Create a new decoder instance.
     pub fn new(reader: &mut R) -> Result<Decoder<R>, Error> {
+        Decoder::new_with_limits(reader, Limits::default())
+    }
+
+    /// Create a new decoder instance with custom limits.
+    pub fn new_with_limits(reader: &mut R, limits: Limits) -> Result<Decoder<R>, Error> {
+        let mut memory_left = limits.bytes;
+        update_limits!(memory_left, MAX_PARAMS_SIZE);
         let mut params_buf = vec![0; MAX_PARAMS_SIZE];
         let end_params_pos = reader.read_until(TERMINATOR, &mut params_buf)?;
         if end_params_pos < FILE_MAGICK.len() || !params_buf.starts_with(FILE_MAGICK) {
@@ -275,6 +310,7 @@ impl<'d, R: Read> Decoder<'d, R> {
         }
         let (y_len, u_len, v_len) = get_plane_sizes(width, height, colorspace);
         let frame_size = y_len + u_len + v_len;
+        update_limits!(memory_left, frame_size);
         let frame_buf = vec![0; frame_size];
         Ok(Decoder {
             reader,
@@ -287,11 +323,11 @@ impl<'d, R: Read> Decoder<'d, R> {
             colorspace,
             y_len,
             u_len,
+            memory_left,
         })
     }
 
-    /// Iterate over frames, without extra heap allocations. End of input is
-    /// indicated by `Error::EOF`.
+    /// Iterate over frames. End of input is indicated by `Error::EOF`.
     pub fn read_frame(&mut self) -> Result<Frame, Error> {
         let end_params_pos = self.reader.read_until(TERMINATOR, &mut self.params_buf)?;
         if end_params_pos < FRAME_MAGICK.len() || !self.params_buf.starts_with(FRAME_MAGICK) {
@@ -304,6 +340,7 @@ impl<'d, R: Read> Decoder<'d, R> {
             if self.params_buf[start_params_pos] != FIELD_SEP {
                 parse_error!()
             }
+            update_limits!(self.memory_left, end_params_pos - start_params_pos - 1);
             Some((&self.params_buf[start_params_pos + 1..end_params_pos]).to_owned())
         } else {
             None
