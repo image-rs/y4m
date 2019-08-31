@@ -13,7 +13,7 @@ fn main() {
         return println!("Usage: {} in.y4m WxH out.y4m", args[0]);
     }
 
-    let mut infh: Box<io::Read> = if args[1] == "-" {
+    let mut infh: Box<dyn io::Read> = if args[1] == "-" {
         Box::new(io::stdin())
     } else {
         Box::new(File::open(&args[1]).unwrap())
@@ -32,7 +32,7 @@ fn main() {
     let mut resizer = resize::new(w1, h1, w2, h2, Gray8, Triangle);
     let mut dst = vec![0; w2 * h2];
 
-    let mut outfh: Box<io::Write> = if args[3] == "-" {
+    let mut outfh: Box<dyn io::Write> = if args[3] == "-" {
         Box::new(io::stdout())
     } else {
         Box::new(File::create(&args[3]).unwrap())
