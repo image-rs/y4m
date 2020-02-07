@@ -27,16 +27,39 @@ pub enum Error {
     UnknownColorspace,
     /// Error while parsing the file/frame header.
     // TODO(Kagami): Better granularity of parse errors.
-    ParseError,
+    ParseError(ParseError),
     /// Error while reading/writing the file.
     IoError(io::Error),
     /// Out of memory (limits exceeded).
     OutOfMemory,
 }
 
+/// Granular ParseError Definiations
+pub enum ParseError {
+    /// Error reading y4m header
+    InvalidY4M,
+    /// Error parsing int
+    Int,
+    /// Error parsing UTF8 
+    Utf8,
+    /// General Parsing Error
+    General
+}
+
+impl fmt::Debug for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ParseError::InvalidY4M => write!(f, "Error parsing y4m header"),
+            ParseError::Int => write!(f, "Error parsing Int"),
+            ParseError::Utf8 => write!(f, "Error parsing UTF8"),
+            ParseError::General => write!(f, "General parsing error"), 
+        }
+    }
+}
+
 macro_rules! parse_error {
-    () => {
-        return Err(Error::ParseError);
+    ($p:expr) => {
+        return Err(Error::ParseError($p));
     };
 }
 
@@ -51,13 +74,13 @@ impl From<io::Error> for Error {
 
 impl From<num::ParseIntError> for Error {
     fn from(_: num::ParseIntError) -> Error {
-        Error::ParseError
+        Error::ParseError(ParseError::Int)
     }
 }
 
 impl From<str::Utf8Error> for Error {
     fn from(_: str::Utf8Error) -> Error {
-        Error::ParseError
+        Error::ParseError(ParseError::Utf8)
     }
 }
 
@@ -81,7 +104,7 @@ impl<R: Read> EnhancedRead for R {
             }
             collected += chunk_size;
         }
-        parse_error!()
+        parse_error!(ParseError::General)
     }
 }
 
@@ -242,7 +265,7 @@ impl<'d, R: Read> Decoder<'d, R> {
         let mut params_buf = vec![0; MAX_PARAMS_SIZE];
         let end_params_pos = reader.read_until(TERMINATOR, &mut params_buf)?;
         if end_params_pos < FILE_MAGICK.len() || !params_buf.starts_with(FILE_MAGICK) {
-            parse_error!()
+            parse_error!(ParseError::InvalidY4M)
         }
         let raw_params = (&params_buf[FILE_MAGICK.len()..end_params_pos]).to_owned();
         let mut width = 0;
@@ -264,7 +287,7 @@ impl<'d, R: Read> Decoder<'d, R> {
                 b'F' => {
                     let parts: Vec<_> = value.splitn(2, |&b| b == RATIO_SEP).collect();
                     if parts.len() != 2 {
-                        parse_error!()
+                        parse_error!(ParseError::General)
                     }
                     let num = parse_bytes(parts[0])?;
                     let den = parse_bytes(parts[1])?;
@@ -293,7 +316,7 @@ impl<'d, R: Read> Decoder<'d, R> {
         }
         let colorspace = colorspace.unwrap_or(Colorspace::C420);
         if width == 0 || height == 0 {
-            parse_error!()
+            parse_error!(ParseError::General)
         }
         let (y_len, u_len, v_len) = get_plane_sizes(width, height, colorspace);
         let frame_size = y_len + u_len + v_len;
@@ -319,14 +342,14 @@ impl<'d, R: Read> Decoder<'d, R> {
     pub fn read_frame(&mut self) -> Result<Frame, Error> {
         let end_params_pos = self.reader.read_until(TERMINATOR, &mut self.params_buf)?;
         if end_params_pos < FRAME_MAGICK.len() || !self.params_buf.starts_with(FRAME_MAGICK) {
-            parse_error!()
+            parse_error!(ParseError::InvalidY4M)
         }
         // We don't parse frame params currently but user has access to them.
         let start_params_pos = FRAME_MAGICK.len();
         let raw_params = if end_params_pos - start_params_pos > 0 {
             // Check for extra space.
             if self.params_buf[start_params_pos] != FIELD_SEP {
-                parse_error!()
+                parse_error!(ParseError::InvalidY4M)
             }
             Some((&self.params_buf[start_params_pos + 1..end_params_pos]).to_owned())
         } else {
