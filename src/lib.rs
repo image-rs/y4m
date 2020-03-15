@@ -40,10 +40,10 @@ pub enum ParseError {
     InvalidY4M,
     /// Error parsing int
     Int,
-    /// Error parsing UTF8 
+    /// Error parsing UTF8
     Utf8,
     /// General Parsing Error
-    General
+    General,
 }
 
 impl fmt::Debug for ParseError {
@@ -52,7 +52,7 @@ impl fmt::Debug for ParseError {
             ParseError::InvalidY4M => write!(f, "Error parsing y4m header"),
             ParseError::Int => write!(f, "Error parsing Int"),
             ParseError::Utf8 => write!(f, "Error parsing UTF8"),
-            ParseError::General => write!(f, "General parsing error"), 
+            ParseError::General => write!(f, "General parsing error"),
         }
     }
 }
@@ -205,7 +205,8 @@ impl Colorspace {
 fn get_plane_sizes(width: usize, height: usize, colorspace: Colorspace) -> (usize, usize, usize) {
     let y_plane_size = width * height * colorspace.get_bytes_per_sample();
 
-    let c420_chroma_size = ((width + 1) / 2) * ((height + 1) / 2) * colorspace.get_bytes_per_sample();
+    let c420_chroma_size =
+        ((width + 1) / 2) * ((height + 1) / 2) * colorspace.get_bytes_per_sample();
     let c422_chroma_size = ((width + 1) / 2) * height * colorspace.get_bytes_per_sample();
 
     let c420_sizes = (y_plane_size, c420_chroma_size, c420_chroma_size);
