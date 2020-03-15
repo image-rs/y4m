@@ -427,19 +427,19 @@ impl<'f> Frame<'f> {
             [
                 unsafe {
                     std::slice::from_raw_parts::<u8>(
-                        planes[0].as_ptr() as (*const u8),
+                        planes[0].as_ptr() as *const u8,
                         planes[0].len() * 2,
                     )
                 },
                 unsafe {
                     std::slice::from_raw_parts::<u8>(
-                        planes[1].as_ptr() as (*const u8),
+                        planes[1].as_ptr() as *const u8,
                         planes[1].len() * 2,
                     )
                 },
                 unsafe {
                     std::slice::from_raw_parts::<u8>(
-                        planes[2].as_ptr() as (*const u8),
+                        planes[2].as_ptr() as *const u8,
                         planes[2].len() * 2,
                     )
                 },
