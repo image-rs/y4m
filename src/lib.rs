@@ -242,8 +242,8 @@ impl Default for Limits {
 }
 
 /// YUV4MPEG2 decoder.
-pub struct Decoder<'d, R: Read + 'd> {
-    reader: &'d mut R,
+pub struct Decoder<R: Read> {
+    reader: R,
     params_buf: Vec<u8>,
     frame_buf: Vec<u8>,
     raw_params: Vec<u8>,
@@ -255,14 +255,14 @@ pub struct Decoder<'d, R: Read + 'd> {
     u_len: usize,
 }
 
-impl<'d, R: Read> Decoder<'d, R> {
+impl<R: Read> Decoder<R> {
     /// Create a new decoder instance.
-    pub fn new(reader: &mut R) -> Result<Decoder<R>, Error> {
+    pub fn new(reader: R) -> Result<Decoder<R>, Error> {
         Decoder::new_with_limits(reader, Limits::default())
     }
 
     /// Create a new decoder instance with custom limits.
-    pub fn new_with_limits(reader: &mut R, limits: Limits) -> Result<Decoder<R>, Error> {
+    pub fn new_with_limits(mut reader: R, limits: Limits) -> Result<Decoder<R>, Error> {
         let mut params_buf = vec![0; MAX_PARAMS_SIZE];
         let end_params_pos = reader.read_until(TERMINATOR, &mut params_buf)?;
         if end_params_pos < FILE_MAGICK.len() || !params_buf.starts_with(FILE_MAGICK) {
@@ -499,7 +499,7 @@ impl EncoderBuilder {
     }
 
     /// Write header to the stream and create encoder instance.
-    pub fn write_header<W: Write>(self, writer: &mut W) -> Result<Encoder<W>, Error> {
+    pub fn write_header<W: Write>(self, mut writer: W) -> Result<Encoder<W>, Error> {
         // XXX(Kagami): Beware that FILE_MAGICK already contains space.
         writer.write_all(FILE_MAGICK)?;
         write!(
@@ -520,14 +520,14 @@ impl EncoderBuilder {
 }
 
 /// YUV4MPEG2 encoder.
-pub struct Encoder<'e, W: Write + 'e> {
-    writer: &'e mut W,
+pub struct Encoder<W: Write> {
+    writer: W,
     y_len: usize,
     u_len: usize,
     v_len: usize,
 }
 
-impl<'e, W: Write> Encoder<'e, W> {
+impl<W: Write> Encoder<W> {
     /// Write next frame to the stream.
     pub fn write_frame(&mut self, frame: &Frame) -> Result<(), Error> {
         if frame.get_y_plane().len() != self.y_len
@@ -550,7 +550,7 @@ impl<'e, W: Write> Encoder<'e, W> {
 }
 
 /// Create a new decoder instance. Alias for `Decoder::new`.
-pub fn decode<R: Read>(reader: &mut R) -> Result<Decoder<R>, Error> {
+pub fn decode<R: Read>(reader: R) -> Result<Decoder<R>, Error> {
     Decoder::new(reader)
 }
 
