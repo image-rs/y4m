@@ -1,6 +1,6 @@
 [package]
 name = "y4m"
-version = "0.5.1"
+version = "0.5.2"
 authors = ["Kagami Hiiragi <kagami@genshiken.org>"]
 description = "YUV4MPEG2 (.y4m) Encoder/Decoder."
 keywords = ["y4m", "YUV4MPEG2", "video", "decoder", "encoder"]
