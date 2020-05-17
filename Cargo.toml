@@ -11,4 +11,4 @@ repository = "https://github.com/image-rs/y4m.git"
 documentation = "http://docs.piston.rs/y4m/y4m/"
 
 [dev-dependencies]
-resize = "0.3.0"
+resize = "0.4"
