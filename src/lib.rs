@@ -46,6 +46,17 @@ pub enum ParseError {
     General,
 }
 
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ParseError::InvalidY4M => write!(f, "Error parsing y4m header"),
+            ParseError::Int => write!(f, "Error parsing Int"),
+            ParseError::Utf8 => write!(f, "Error parsing UTF8"),
+            ParseError::General => write!(f, "General parsing error"),
+        }
+    }
+}
+
 impl fmt::Debug for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
