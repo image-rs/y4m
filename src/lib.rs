@@ -46,6 +46,17 @@ pub enum ParseError {
     General,
 }
 
+impl std::error::Error for crate::ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match *self {
+            ParseError::InvalidY4M => None,
+            ParseError::Int => None,
+            ParseError::Utf8 => None,
+            ParseError::General => None,
+        }
+    }
+}
+
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
