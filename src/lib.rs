@@ -34,6 +34,32 @@ pub enum Error {
     OutOfMemory,
 }
 
+impl std::error::Error for crate::Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match *self {
+            Error::EOF => None,
+            Error::BadInput => None,
+            Error::UnknownColorspace => None,
+            Error::ParseError(ref err) => Some(err),
+            Error::IoError(ref err) => Some(err),
+            Error::OutOfMemory => None,
+        }
+    }
+}
+
+impl fmt::Display for crate::Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::EOF => write!(f, "End of file"),
+            Error::BadInput => write!(f, "Bad input parameters provided"),
+            Error::UnknownColorspace => write!(f, "Bad input parameters provided"),
+            Error::ParseError(ref err) => err.fmt(f),
+            Error::IoError(ref err) => err.fmt(f),
+            Error::OutOfMemory => write!(f, "Out of memory (limits exceeded)"),
+        }
+    }
+}
+
 /// Granular ParseError Definiations
 pub enum ParseError {
     /// Error reading y4m header
@@ -44,6 +70,28 @@ pub enum ParseError {
     Utf8,
     /// General Parsing Error
     General,
+}
+
+impl std::error::Error for crate::ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match *self {
+            ParseError::InvalidY4M => None,
+            ParseError::Int => None,
+            ParseError::Utf8 => None,
+            ParseError::General => None,
+        }
+    }
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ParseError::InvalidY4M => write!(f, "Error parsing y4m header"),
+            ParseError::Int => write!(f, "Error parsing Int"),
+            ParseError::Utf8 => write!(f, "Error parsing UTF8"),
+            ParseError::General => write!(f, "General parsing error"),
+        }
+    }
 }
 
 impl fmt::Debug for ParseError {
