@@ -309,6 +309,7 @@ pub struct Decoder<R: Read> {
     width: usize,
     height: usize,
     framerate: Ratio,
+    pixel_aspect: Ratio,
     colorspace: Colorspace,
     y_len: usize,
     u_len: usize,
@@ -333,6 +334,7 @@ impl<R: Read> Decoder<R> {
         // Framerate is actually required per spec, but let's be a bit more
         // permissive as per ffmpeg behavior.
         let mut framerate = Ratio::new(25, 1);
+        let mut pixel_aspect = Ratio::new(1, 1);
         let mut colorspace = None;
         // We shouldn't convert it to string because encoding is unspecified.
         for param in raw_params.split(|&b| b == FIELD_SEP) {
@@ -340,11 +342,12 @@ impl<R: Read> Decoder<R> {
                 continue;
             }
             let (name, value) = (param[0], &param[1..]);
-            // TODO(Kagami): interlacing, pixel aspect, comment.
+            // TODO(Kagami): interlacing, comment.
             match name {
                 b'W' => width = parse_bytes(value)?,
                 b'H' => height = parse_bytes(value)?,
                 b'F' => framerate = Ratio::parse(value)?,
+                b'A' => pixel_aspect = Ratio::parse(value)?,
                 b'C' => {
                     colorspace = match value {
                         b"mono" => Some(Colorspace::Cmono),
@@ -384,6 +387,7 @@ impl<R: Read> Decoder<R> {
             width,
             height,
             framerate,
+            pixel_aspect,
             colorspace,
             y_len,
             u_len,
@@ -432,6 +436,11 @@ impl<R: Read> Decoder<R> {
     #[inline]
     pub fn get_framerate(&self) -> Ratio {
         self.framerate
+    }
+    /// Return file pixel aspect.
+    #[inline]
+    pub fn get_pixel_aspect(&self) -> Ratio {
+        self.pixel_aspect
     }
     /// Return file colorspace.
     ///
