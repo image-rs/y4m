@@ -538,6 +538,7 @@ pub struct EncoderBuilder {
     width: usize,
     height: usize,
     framerate: Ratio,
+    pixel_aspect: Ratio,
     colorspace: Colorspace,
 }
 
@@ -548,6 +549,7 @@ impl EncoderBuilder {
             width,
             height,
             framerate,
+            pixel_aspect: Ratio::new(1, 1),
             colorspace: Colorspace::C420,
         }
     }
@@ -555,6 +557,12 @@ impl EncoderBuilder {
     /// Specify file colorspace.
     pub fn with_colorspace(mut self, colorspace: Colorspace) -> Self {
         self.colorspace = colorspace;
+        self
+    }
+
+    /// Specify file pixel aspect.
+    pub fn with_pixel_aspect(mut self, pixel_aspect: Ratio) -> Self {
+        self.pixel_aspect = pixel_aspect;
         self
     }
 
@@ -567,6 +575,9 @@ impl EncoderBuilder {
             "W{} H{} F{}",
             self.width, self.height, self.framerate
         )?;
+        if self.pixel_aspect.num != 1 || self.pixel_aspect.den != 1 {
+            write!(writer, " A{}", self.pixel_aspect)?;
+        }
         write!(writer, " {:?}", self.colorspace)?;
         writer.write_all(&[TERMINATOR])?;
         let (y_len, u_len, v_len) = get_plane_sizes(self.width, self.height, self.colorspace);
