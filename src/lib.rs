@@ -175,6 +175,17 @@ impl Ratio {
     pub fn new(num: usize, den: usize) -> Ratio {
         Ratio { num, den }
     }
+
+    /// Parse a ratio from a byte slice.
+    pub fn parse(value: &[u8]) -> Result<Ratio, Error> {
+        let parts: Vec<_> = value.splitn(2, |&b| b == RATIO_SEP).collect();
+        if parts.len() != 2 {
+            parse_error!(ParseError::General)
+        }
+        let num = parse_bytes(parts[0])?;
+        let den = parse_bytes(parts[1])?;
+        Ok(Ratio::new(num, den))
+    }
 }
 
 impl fmt::Display for Ratio {
@@ -333,15 +344,7 @@ impl<R: Read> Decoder<R> {
             match name {
                 b'W' => width = parse_bytes(value)?,
                 b'H' => height = parse_bytes(value)?,
-                b'F' => {
-                    let parts: Vec<_> = value.splitn(2, |&b| b == RATIO_SEP).collect();
-                    if parts.len() != 2 {
-                        parse_error!(ParseError::General)
-                    }
-                    let num = parse_bytes(parts[0])?;
-                    let den = parse_bytes(parts[1])?;
-                    framerate = Ratio::new(num, den);
-                }
+                b'F' => framerate = Ratio::parse(value)?,
                 b'C' => {
                     colorspace = match value {
                         b"mono" => Some(Colorspace::Cmono),
