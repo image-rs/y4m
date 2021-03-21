@@ -8,7 +8,7 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/image-rs/y4m"
 repository = "https://github.com/image-rs/y4m.git"
-documentation = "http://docs.piston.rs/y4m/y4m/"
+documentation = "https://docs.rs/y4m"
 
 [dev-dependencies]
 resize = "0.4"
