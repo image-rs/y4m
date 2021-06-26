@@ -59,7 +59,7 @@ impl fmt::Display for crate::Error {
             Error::ParseError(ref err) => err.fmt(f),
             Error::IoError(ref err) => err.fmt(f),
             Error::OutOfMemory => write!(f, "Out of memory (limits exceeded)"),
-            Error::UnknownInterlaceValue => write!(f, "Invalid value for interlacing parameter")
+            Error::UnknownInterlaceValue => write!(f, "Invalid value for interlacing parameter"),
         }
     }
 }
@@ -209,7 +209,7 @@ pub enum Interlacing {
     /// "Ib" - Bottom field first
     BottomFieldFirst,
     /// "Im" - Mixed mode
-    MixedMode
+    MixedMode,
 }
 /// Colorspace (color model/pixel format). Only subset of them is supported.
 ///
@@ -331,7 +331,7 @@ pub struct Decoder<R: Read> {
     y_len: usize,
     u_len: usize,
     interlacing: Interlacing,
-    comments: Vec<String>
+    comments: Vec<String>,
 }
 
 impl<R: Read> Decoder<R> {
@@ -366,14 +366,14 @@ impl<R: Read> Decoder<R> {
             // TODO(Kagami): interlacing, comment.
             match name {
                 b'W' => width = parse_bytes(value)?,
-                b'X' => comments.push(str::from_utf8(value).unwrap().to_owned()),
+                b'X' => comments.push(String::from_utf8_lossy(value).into_owned()),
                 b'I' => {
                     interlacing = match value {
                         b"p" => Some(Interlacing::Progressive),
                         b"t" => Some(Interlacing::TopFieldFirst),
                         b"b" => Some(Interlacing::BottomFieldFirst),
                         b"m" => Some(Interlacing::MixedMode),
-                        _ => return Err(Error::UnknownInterlaceValue)
+                        _ => return Err(Error::UnknownInterlaceValue),
 
                     }
                 }
@@ -425,7 +425,7 @@ impl<R: Read> Decoder<R> {
             y_len,
             u_len,
             interlacing,
-            comments
+            comments,
         })
     }
 
