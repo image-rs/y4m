@@ -207,6 +207,8 @@ impl fmt::Display for Ratio {
 pub enum Colorspace {
     /// Grayscale only, 8-bit.
     Cmono,
+    /// Grayscale only, 12-bit.
+    Cmono12,
     /// 4:2:0 with coincident chroma planes, 8-bit.
     C420,
     /// 4:2:0 with coincident chroma planes, 10-bit.
@@ -246,7 +248,10 @@ impl Colorspace {
             | Colorspace::C420paldv
             | Colorspace::C420mpeg2 => 8,
             Colorspace::C420p10 | Colorspace::C422p10 | Colorspace::C444p10 => 10,
-            Colorspace::C420p12 | Colorspace::C422p12 | Colorspace::C444p12 => 12,
+            Colorspace::Cmono12
+            | Colorspace::C420p12
+            | Colorspace::C422p12
+            | Colorspace::C444p12 => 12,
         }
     }
 
@@ -273,7 +278,7 @@ fn get_plane_sizes(width: usize, height: usize, colorspace: Colorspace) -> (usiz
     let c444_sizes = (y_plane_size, y_plane_size, y_plane_size);
 
     match colorspace {
-        Colorspace::Cmono => (y_plane_size, 0, 0),
+        Colorspace::Cmono | Colorspace::Cmono12 => (y_plane_size, 0, 0),
         Colorspace::C420
         | Colorspace::C420p10
         | Colorspace::C420p12
@@ -351,6 +356,7 @@ impl<R: Read> Decoder<R> {
                 b'C' => {
                     colorspace = match value {
                         b"mono" => Some(Colorspace::Cmono),
+                        b"mono12" => Some(Colorspace::Cmono12),
                         b"420" => Some(Colorspace::C420),
                         b"420p10" => Some(Colorspace::C420p10),
                         b"420p12" => Some(Colorspace::C420p12),
