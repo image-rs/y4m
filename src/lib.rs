@@ -540,6 +540,7 @@ pub struct EncoderBuilder {
     framerate: Ratio,
     pixel_aspect: Ratio,
     colorspace: Colorspace,
+    vendor_extensions: Vec<String>,
 }
 
 impl EncoderBuilder {
@@ -551,6 +552,7 @@ impl EncoderBuilder {
             framerate,
             pixel_aspect: Ratio::new(1, 1),
             colorspace: Colorspace::C420,
+            vendor_extensions: vec![],
         }
     }
 
@@ -566,6 +568,15 @@ impl EncoderBuilder {
         self
     }
 
+    /// Add vendor extension.
+    ///
+    /// For example, setting `COLORRANGE=FULL` sets the interpretation of the
+    /// YUV values accordingly.
+    pub fn append_vendor_extension(mut self, x_option: String) -> Self {
+        self.vendor_extensions.push(x_option);
+        self
+    }
+
     /// Write header to the stream and create encoder instance.
     pub fn write_header<W: Write>(self, mut writer: W) -> Result<Encoder<W>, Error> {
         // XXX(Kagami): Beware that FILE_MAGICK already contains space.
@@ -577,6 +588,9 @@ impl EncoderBuilder {
         )?;
         if self.pixel_aspect.num != 1 || self.pixel_aspect.den != 1 {
             write!(writer, " A{}", self.pixel_aspect)?;
+        }
+        for x_option in self.vendor_extensions.iter() {
+            write!(writer, " X{}", x_option)?;
         }
         write!(writer, " {:?}", self.colorspace)?;
         writer.write_all(&[TERMINATOR])?;
