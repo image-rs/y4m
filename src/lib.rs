@@ -204,6 +204,7 @@ impl fmt::Display for Ratio {
 /// yuv444p14, yuv422p14, yuv420p14, yuv444p16, yuv422p16, yuv420p16, gray9,
 /// gray10, gray12 and gray16 pixel formats.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum Colorspace {
     /// Grayscale only, 8-bit.
     Cmono,
