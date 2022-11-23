@@ -161,6 +161,31 @@ fn parse_bytes(buf: &[u8]) -> Result<usize, Error> {
     Ok(str::from_utf8(buf)?.parse()?)
 }
 
+/// A newtype wrapper around Vec<u8> to ensure validity as a vendor extension.
+#[derive(Debug, Clone)]
+pub struct VendorExtensionString(Vec<u8>);
+
+impl VendorExtensionString {
+    /// Create a new vendor extension string.
+    ///
+    /// For example, setting to `b"COLORRANGE=FULL"` sets the interpretation of
+    /// the YUV values to cover the full range (rather a limited "studio swing"
+    /// range).
+    ///
+    /// The argument `x_option` must not contain a space (b' ') character,
+    /// otherwise [Error::BadInput] is returned.
+    pub fn new(value: Vec<u8>) -> Result<VendorExtensionString, Error> {
+        if value.contains(&b' ') {
+            return Err(Error::BadInput);
+        }
+        Ok(VendorExtensionString(value))
+    }
+    /// Get the vendor extension string.
+    pub fn value(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
 /// Simple ratio structure since stdlib lacks one.
 #[derive(Debug, Clone, Copy)]
 pub struct Ratio {
@@ -547,6 +572,7 @@ pub struct EncoderBuilder {
     framerate: Ratio,
     pixel_aspect: Ratio,
     colorspace: Colorspace,
+    vendor_extensions: Vec<Vec<u8>>,
 }
 
 impl EncoderBuilder {
@@ -558,6 +584,7 @@ impl EncoderBuilder {
             framerate,
             pixel_aspect: Ratio::new(1, 1),
             colorspace: Colorspace::C420,
+            vendor_extensions: vec![],
         }
     }
 
@@ -573,6 +600,12 @@ impl EncoderBuilder {
         self
     }
 
+    /// Add vendor extension.
+    pub fn append_vendor_extension(mut self, x_option: VendorExtensionString) -> Self {
+        self.vendor_extensions.push(x_option.0);
+        self
+    }
+
     /// Write header to the stream and create encoder instance.
     pub fn write_header<W: Write>(self, mut writer: W) -> Result<Encoder<W>, Error> {
         // XXX(Kagami): Beware that FILE_MAGICK already contains space.
@@ -584,6 +617,10 @@ impl EncoderBuilder {
         )?;
         if self.pixel_aspect.num != 1 || self.pixel_aspect.den != 1 {
             write!(writer, " A{}", self.pixel_aspect)?;
+        }
+        for x_option in self.vendor_extensions.iter() {
+            write!(writer, " X")?;
+            writer.write_all(x_option)?;
         }
         write!(writer, " {:?}", self.colorspace)?;
         writer.write_all(&[TERMINATOR])?;
