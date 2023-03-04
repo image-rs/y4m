@@ -359,7 +359,7 @@ impl<R: Read> Decoder<R> {
         if end_params_pos < FILE_MAGICK.len() || !params_buf.starts_with(FILE_MAGICK) {
             parse_error!(ParseError::InvalidY4M)
         }
-        let raw_params = (&params_buf[FILE_MAGICK.len()..end_params_pos]).to_owned();
+        let raw_params = params_buf[FILE_MAGICK.len()..end_params_pos].to_owned();
         let mut width = 0;
         let mut height = 0;
         // Framerate is actually required per spec, but let's be a bit more
@@ -439,7 +439,7 @@ impl<R: Read> Decoder<R> {
             if self.params_buf[start_params_pos] != FIELD_SEP {
                 parse_error!(ParseError::InvalidY4M)
             }
-            Some((&self.params_buf[start_params_pos + 1..end_params_pos]).to_owned())
+            Some(self.params_buf[start_params_pos + 1..end_params_pos].to_owned())
         } else {
             None
         };
