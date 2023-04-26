@@ -108,7 +108,7 @@ impl fmt::Debug for ParseError {
 macro_rules! parse_error {
     ($p:expr) => {
         return Err(Error::ParseError($p))
-    };
+    }
 }
 
 impl From<io::Error> for Error {
