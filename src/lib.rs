@@ -243,9 +243,9 @@ pub enum Colorspace {
     C420p12,
     /// 4:2:0 with biaxially-displaced chroma planes, 8-bit.
     C420jpeg,
-    /// 4:2:0 with vertically-displaced chroma planes, 8-bit.
+    /// 4:2:0 with coincident Cb and vertically-displaced Cr, 8-bit.
     C420paldv,
-    /// Found in some files. Same as `C420`.
+    /// 4:2:0 with vertically-displaced chroma planes, 8-bit.
     C420mpeg2,
     /// 4:2:2, 8-bit.
     C422,
