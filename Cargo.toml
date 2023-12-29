@@ -11,4 +11,5 @@ repository = "https://github.com/image-rs/y4m.git"
 documentation = "https://docs.rs/y4m"
 
 [dev-dependencies]
-resize = "0.4"
+resize = "0.8"
+rgb = "0.8"
