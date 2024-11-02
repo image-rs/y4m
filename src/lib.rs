@@ -662,6 +662,16 @@ impl<W: Write> Encoder<W> {
         self.writer.write_all(frame.get_v_plane())?;
         Ok(())
     }
+
+    /// Flush the underlying writer.
+    pub fn flush(&mut self) -> Result<(), Error> {
+        self.writer.flush().map_err(|e| Error::IoError(e))
+    }
+
+    /// Return the underlying writer.
+    pub fn into_inner(self) -> W {
+        self.writer
+    }
 }
 
 /// Create a new decoder instance. Alias for `Decoder::new`.
